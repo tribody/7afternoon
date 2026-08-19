@@ -1111,89 +1111,153 @@ class S0 extends Scene {
     }
 }
 
-// ==================== SCENE 1: First Meeting (Cafe) ====================
+// ==================== SCENE 1: First Meeting (Office) ====================
 class S1 extends Scene {
-    enter() { super.enter(); this.text = '那年冬天，咖啡馆里的初次相遇'; this.hint = '轻触两杯咖啡，连结我们的缘分'; this.cups = [{ x: 0, y: 0, connected: false }, { x: 0, y: 0, connected: false }]; this.connectT = 0; }
-    update(dt) { super.update(dt); const w = this.g.w, h = this.g.h; this.cups[0].x = w * 0.32; this.cups[0].y = h * 0.65; this.cups[1].x = w * 0.68; this.cups[1].y = h * 0.65; if (this.cups[0].connected && this.cups[1].connected && this.t > 1) this.done = true; }
+    enter() {
+        super.enter();
+        this.text = '那年冬天，在公司第一次见到你，你是产品，我是开发';
+        this.hint = '轻触两台显示器，连结我们的缘分';
+        this.screens = [{ x: 0, y: 0, connected: false, label: 'PRD' }, { x: 0, y: 0, connected: false, label: 'CODE' }];
+        this.prdLines = [35, 42, 28, 38, 30]; // pre-generated line widths
+        this.connectT = 0;
+    }
+    update(dt) {
+        super.update(dt);
+        const w = this.g.w, h = this.g.h;
+        this.screens[0].x = w * 0.28; this.screens[0].y = h * 0.48;
+        this.screens[1].x = w * 0.72; this.screens[1].y = h * 0.48;
+        if (this.screens[0].connected && this.screens[1].connected && this.t > 1) this.done = true;
+    }
     render(ctx) {
         const w = this.g.w, h = this.g.h;
-        // Warm cafe interior
-        drawSky(ctx, w, h, C.peachDeep, C.honey, C.cream);
-        // Window light wash
-        wcWash(ctx, w * 0.5, h * 0.3, 300, C.honey, 0.15);
-        wcWash(ctx, w * 0.2, h * 0.4, 200, C.coral, 0.08);
+        // Office interior - cool fluorescent + warm accent
+        drawSky(ctx, w, h, C.grayLight, C.cream, C.peachDeep);
+        // Ceiling light wash
+        wcWash(ctx, w * 0.5, h * 0.05, 250, C.honey, 0.12);
+        wcWash(ctx, w * 0.25, h * 0.1, 150, C.sky, 0.08);
+        wcWash(ctx, w * 0.75, h * 0.1, 150, C.sky, 0.08);
         drawPaperTexture(ctx, w, h);
         // Floor
-        drawGround(ctx, w, h, h * 0.7, C.warmBrown, C.darkBrown);
-        // Window
-        ctx.save();
-        ctx.fillStyle = C.rgba(C.cream, 0.3);
-        ctx.filter = 'blur(2px)';
-        fRect(ctx, w * 0.05, h * 0.1, w * 0.25, h * 0.5);
-        ctx.restore();
-        // Hanging lights
+        drawGround(ctx, w, h, h * 0.72, C.warmBrown, C.darkBrown);
+        // Ceiling panel lights
         for (let i = 0; i < 3; i++) {
-            const lx = w * (0.25 + i * 0.25);
-            const ly = h * 0.15;
-            ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, ly); ctx.stroke();
-            wcWash(ctx, lx, ly + 8, 40, C.honey, 0.3);
-            fCircle(ctx, lx, ly + 5, 8, C.honeyDeep);
+            const lx = w * (0.2 + i * 0.3);
+            ctx.fillStyle = C.rgba(C.cream, 0.4);
+            ctx.filter = 'blur(1px)';
+            fRR(ctx, lx - 30, 0, 60, 8, 2, C.rgba(C.cream, 0.4));
+            ctx.filter = 'none';
         }
-        // Table
+        // Whiteboard on wall
+        ctx.save();
+        fRR(ctx, w * 0.35, h * 0.08, w * 0.3, h * 0.15, 4, C.white);
+        ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 3;
+        ctx.stroke();
+        // Whiteboard content (wireframe lines)
+        ctx.strokeStyle = C.rgba(C.sky, 0.5); ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(w * 0.38, h * 0.12); ctx.lineTo(w * 0.45, h * 0.12);
+        ctx.moveTo(w * 0.38, h * 0.15); ctx.lineTo(w * 0.55, h * 0.15);
+        ctx.moveTo(w * 0.38, h * 0.18); ctx.lineTo(w * 0.50, h * 0.18);
+        ctx.stroke();
+        // Small boxes (UI mockup)
+        ctx.strokeStyle = C.rgba(C.coral, 0.4);
+        ctx.strokeRect(w * 0.48, h * 0.11, 12, 8);
+        ctx.strokeRect(w * 0.52, h * 0.11, 12, 8);
+        ctx.restore();
+        // Desks
         ctx.fillStyle = C.warmBrown;
-        fRR(ctx, w * 0.15, h * 0.68, w * 0.7, 12, 6, C.warmBrown);
-        // Coffee cups
+        fRR(ctx, w * 0.1, h * 0.58, w * 0.35, 14, 4, C.warmBrown);
+        fRR(ctx, w * 0.55, h * 0.58, w * 0.35, 14, 4, C.warmBrown);
+        // Desk legs
+        ctx.fillStyle = C.darkBrown;
+        ctx.fillRect(w * 0.12, h * 0.58 + 14, 4, h * 0.14);
+        ctx.fillRect(w * 0.42, h * 0.58 + 14, 4, h * 0.14);
+        ctx.fillRect(w * 0.57, h * 0.58 + 14, 4, h * 0.14);
+        ctx.fillRect(w * 0.87, h * 0.58 + 14, 4, h * 0.14);
+        // Two monitors
         for (let i = 0; i < 2; i++) {
-            const c = this.cups[i];
-            ctx.save();
-            const bob = Math.sin(this.t * 2 + i * Math.PI) * 2;
-            // Steam
-            ctx.strokeStyle = C.rgba(C.white, 0.15); ctx.lineWidth = 2;
-            ctx.filter = 'blur(2px)';
-            for (let s = 0; s < 3; s++) {
-                ctx.beginPath();
-                ctx.moveTo(c.x + (s - 1) * 4, c.y - 15 + bob);
-                ctx.quadraticCurveTo(c.x + (s - 1) * 4 + Math.sin(this.t * 3 + s) * 5, c.y - 30 + bob, c.x + (s - 1) * 4, c.y - 40 + bob);
-                ctx.stroke();
+            const s = this.screens[i];
+            const bob = Math.sin(this.t * 1.5 + i * Math.PI) * 1.5;
+            // Monitor stand
+            ctx.fillStyle = C.darkGray;
+            fRR(ctx, s.x - 4, s.y + 18 + bob, 8, 12, 2, C.darkGray);
+            fRR(ctx, s.x - 12, s.y + 28 + bob, 24, 4, 2, C.darkGray);
+            // Monitor body
+            ctx.fillStyle = C.darkGray;
+            fRR(ctx, s.x - 32, s.y - 20 + bob, 64, 42, 3, C.darkGray);
+            // Screen
+            ctx.fillStyle = s.connected ? C.coral : C.rgba(C.skyLight, 0.7);
+            fRR(ctx, s.x - 29, s.y - 17 + bob, 58, 36, 2, ctx.fillStyle);
+            // Screen content
+            ctx.fillStyle = C.rgba(C.white, 0.6);
+            if (i === 0) {
+                // PRD document mockup
+                for (let r = 0; r < this.prdLines.length; r++) {
+                    ctx.fillRect(s.x - 24, s.y - 12 + r * 5 + bob, this.prdLines[r], 2);
+                }
+            } else {
+                // Code mockup
+                ctx.font = `7px monospace`;
+                ctx.fillText('function', s.x - 24, s.y - 8 + bob);
+                ctx.fillText('return', s.x - 24, s.y + 2 + bob);
+                ctx.fillText('}', s.x - 24, s.y + 12 + bob);
             }
-            ctx.restore();
-            // Cup
-            ctx.fillStyle = c.connected ? C.coral : C.cream;
-            fRR(ctx, c.x - 12, c.y - 15 + bob, 24, 22, 4, ctx.fillStyle);
-            // Handle
-            ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(c.x + 14, c.y - 4 + bob, 6, -Math.PI/2, Math.PI/2); ctx.stroke();
-            // Coffee
-            ctx.fillStyle = C.darkBrown;
-            fRR(ctx, c.x - 9, c.y - 12 + bob, 18, 4, 2, C.darkBrown);
             // Glow when connected
-            if (c.connected) { wcWash(ctx, c.x, c.y, 30, C.coral, 0.2); }
+            if (s.connected) {
+                wcWash(ctx, s.x, s.y + bob, 50, C.coral, 0.25);
+                // Label badge
+                ctx.fillStyle = C.coral;
+                fRR(ctx, s.x - 18, s.y - 28 + bob, 36, 12, 3, C.coral);
+                ctx.fillStyle = C.white;
+                ctx.font = `bold 8px ${FB}`;
+                ctx.textAlign = 'center';
+                ctx.fillText(s.label, s.x, s.y - 20 + bob);
+            } else {
+                // Dim label
+                ctx.fillStyle = C.rgba(C.gray, 0.5);
+                ctx.font = `8px ${FB}`;
+                ctx.textAlign = 'center';
+                ctx.fillText(s.label, s.x, s.y - 26 + bob);
+            }
         }
-        // Connection line
-        if (this.cups[0].connected && this.cups[1].connected) {
+        // Connection line between monitors
+        if (this.screens[0].connected && this.screens[1].connected) {
             const p = U.easeOut(U.clamp(this.t - 0.5, 0, 1));
             ctx.save();
-            ctx.strokeStyle = C.rgba(C.coral, 0.4); ctx.lineWidth = 3;
+            ctx.strokeStyle = C.rgba(C.coral, 0.5); ctx.lineWidth = 3;
             ctx.filter = 'blur(1px)';
             ctx.beginPath();
-            ctx.moveTo(this.cups[0].x, this.cups[0].y - 4);
-            ctx.quadraticCurveTo(w / 2, h * 0.5, this.cups[1].x * p + this.cups[0].x * (1-p), this.cups[1].y - 4);
+            ctx.moveTo(this.screens[0].x + 32, this.screens[0].y);
+            const cx = U.lerp(this.screens[0].x + 32, this.screens[1].x - 32, p);
+            ctx.lineTo(cx, this.screens[0].y);
             ctx.stroke();
+            // Heart at connection point
+            if (p > 0.5) {
+                drawHeart(ctx, U.lerp(this.screens[0].x, this.screens[1].x, 0.5), this.screens[0].y - 5, 0.8, C.coral, 0.8 * (p - 0.5) * 2);
+            }
             ctx.restore();
         }
+        // Office chairs
+        ctx.save();
+        ctx.fillStyle = C.darkBrown;
+        ctx.filter = 'blur(0.5px)';
+        fCircle(ctx, w * 0.28, h * 0.72, 14, C.darkBrown);
+        fCircle(ctx, w * 0.72, h * 0.72, 14, C.darkBrown);
+        ctx.restore();
         // Characters
-        const sc = Math.min(1.4, w / 280);
-        drawBoy(ctx, w * 0.32, h * 0.52, sc, { expression: 'shy', blush: true });
-        drawGirl(ctx, w * 0.68, h * 0.52, sc, { expression: 'shy', blush: true });
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.72, h * 0.50, sc, { expression: 'shy', blush: true });
+        drawGirl(ctx, w * 0.28, h * 0.50, sc, { expression: 'shy', blush: true });
     }
     onDown(x, y) {
-        for (const c of this.cups) {
-            if (!c.connected && U.dist(x, y, c.x, c.y) < 25) {
-                c.connected = true;
-                this.g.ps.spawn(c.x, c.y, 'heart', 6, { size: 4, color: C.coral, spread: 1.5, life: 1.5, gravity: -0.05 });
-                if (this.cups[0].connected && this.cups[1].connected) {
-                    this.hint = ''; this.text = '缘分就这样开始了...';
+        for (const s of this.screens) {
+            if (!s.connected && U.dist(x, y, s.x, s.y) < 35) {
+                s.connected = true;
+                this.g.ps.spawn(s.x, s.y, 'heart', 6, { size: 4, color: C.coral, spread: 1.5, life: 1.5, gravity: -0.05 });
+                this.g.ps.spawn(s.x, s.y, 'sparkle', 4, { size: 3, color: C.honey, spread: 2, life: 1, gravity: 0 });
+                if (this.screens[0].connected && this.screens[1].connected) {
+                    this.hint = '';
+                    this.text = '产品与开发，缘分就这样开始了...';
                     this.t = 0;
                 }
             }
