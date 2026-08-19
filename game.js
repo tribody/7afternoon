@@ -113,21 +113,28 @@ function wcGradient(ctx, x, y, w, h, c1, c2, angle) {
     ctx.fillRect(x, y, w, h);
 }
 
-// Radial watercolor wash
+// Radial watercolor wash - handles hex (#RRGGBB) and rgba() colors
 function wcWash(ctx, x, y, r, color, alpha) {
-    alpha = alpha || 0.3;
+    alpha = alpha === undefined ? 0.3 : alpha;
+    r = Math.max(1, r);
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
-    g.addColorStop(0, color.replace(')', `,${alpha})`).replace('rgb', 'rgba').replace('#', 'rgba('));
-    // Fallback if color is hex
     if (color.startsWith('#')) {
-        const h = color.replace('#','');
-        const r2=parseInt(h.substr(0,2),16),g2=parseInt(h.substr(2,2),16),b2=parseInt(h.substr(4,2),16);
+        const h = color.replace('#', '');
+        const r2 = parseInt(h.substr(0, 2), 16);
+        const g2 = parseInt(h.substr(2, 2), 16);
+        const b2 = parseInt(h.substr(4, 2), 16);
         g.addColorStop(0, `rgba(${r2},${g2},${b2},${alpha})`);
-        g.addColorStop(0.6, `rgba(${r2},${g2},${b2},${alpha*0.3})`);
+        g.addColorStop(0.6, `rgba(${r2},${g2},${b2},${alpha * 0.3})`);
         g.addColorStop(1, `rgba(${r2},${g2},${b2},0)`);
-    } else {
+    } else if (color.startsWith('rgba')) {
         g.addColorStop(0, color);
         g.addColorStop(1, 'rgba(0,0,0,0)');
+    } else if (color.startsWith('rgb')) {
+        g.addColorStop(0, color.replace(')', `,${alpha})`).replace('rgb(', 'rgba('));
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+    } else {
+        g.addColorStop(0, color);
+        g.addColorStop(1, color);
     }
     ctx.fillStyle = g;
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
@@ -1282,10 +1289,10 @@ class S3 extends Scene {
             ctx.save();
             ctx.globalAlpha = b.tapped ? alpha * 0.4 : alpha;
             // Bubble
-            ctx.fillStyle = b.tapped ? C.rgba(C.gray, 0.3) : C.rgba(C.cream, 0.8);
+            const bc = b.tapped ? C.rgba(C.gray, 0.3) : C.rgba(C.cream, 0.8);
+            ctx.fillStyle = bc;
             ctx.filter = 'blur(0.5px)';
-            const tw = ctx.measureText(b.text).width;
-            fRR(ctx, b.x - 50, b.y - 18, 100, 36, 12, ctx.fillStyle);
+            fRR(ctx, b.x - 50, b.y - 18, 100, 36, 12, bc);
             ctx.restore();
             // Text
             ctx.save();
@@ -2044,8 +2051,8 @@ class Game {
         const dt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
         this.lastTime = timestamp;
         U.T = timestamp / 1000;
-        this.update(dt);
-        this.render();
+        try { this.update(dt); } catch (e) { console.error('Update error:', e); }
+        try { this.render(); } catch (e) { console.error('Render error:', e); }
         requestAnimationFrame((t) => this.loop(t));
     }
 
