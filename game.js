@@ -140,15 +140,23 @@ function wcWash(ctx, x, y, r, color, alpha) {
     ctx.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-// Paper texture overlay
+// Paper texture overlay (pre-rendered to offscreen canvas for performance)
+let _paperCanvas = null;
+let _paperW = 0, _paperH = 0;
 function drawPaperTexture(ctx, w, h) {
-    ctx.save();
-    ctx.globalAlpha = 0.025;
-    for (let i = 0; i < 300; i++) {
-        ctx.fillStyle = Math.random() > 0.5 ? C.darkBrown : C.warmWhite;
-        ctx.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+    if (!_paperCanvas || _paperW !== w || _paperH !== h) {
+        _paperCanvas = document.createElement('canvas');
+        _paperCanvas.width = w;
+        _paperCanvas.height = h;
+        const pctx = _paperCanvas.getContext('2d');
+        pctx.globalAlpha = 0.025;
+        for (let i = 0; i < 300; i++) {
+            pctx.fillStyle = Math.random() > 0.5 ? C.darkBrown : C.warmWhite;
+            pctx.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+        }
+        _paperW = w; _paperH = h;
     }
-    ctx.restore();
+    ctx.drawImage(_paperCanvas, 0, 0);
 }
 
 // ==================== DRAWING HELPERS ====================
@@ -1195,7 +1203,7 @@ class S1 extends Scene {
 
 // ==================== SCENE 2: Murder Mystery (Heartbeat) ====================
 class S2 extends Scene {
-    enter() { super.enter(); this.text = '剧本杀的夜晚，心跳的声音藏不住了'; this.hint = '轻触那颗跳动的心'; this.heartScale = 1; this.beatT = 0; this.taps = 0; }
+    enter() { super.enter(); this.text = '剧本杀的夜晚，心跳的声音藏不住了'; this.hint = '轻触那颗跳动的心'; this.heartScale = 1; this.beatT = 0; this.taps = 0; this.cards = []; for (let i = 0; i < 5; i++) this.cards.push({ x: 0.2 + i * 0.15, rot: U.rand(-0.2, 0.2) }); }
     update(dt) {
         super.update(dt);
         this.beatT += dt;
@@ -1215,10 +1223,11 @@ class S2 extends Scene {
         // Game cards on table
         ctx.save();
         ctx.fillStyle = C.rgba(C.cream, 0.15);
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < this.cards.length; i++) {
+            const cd = this.cards[i];
             ctx.save();
-            ctx.translate(w * (0.2 + i * 0.15), h * 0.78);
-            ctx.rotate(U.rand(-0.2, 0.2));
+            ctx.translate(w * cd.x, h * 0.78);
+            ctx.rotate(cd.rot);
             fRR(ctx, -15, -20, 30, 40, 3, C.rgba(C.cream, 0.15));
             ctx.restore();
         }
@@ -1252,11 +1261,12 @@ class S2 extends Scene {
 
 // ==================== SCENE 3: New Year Chat ====================
 class S3 extends Scene {
-    enter() { super.enter(); this.text = '除夕夜，屏幕那头的你问我有没有女朋友'; this.hint = '轻触消息气泡'; this.bubbles = []; this.tapped = 0; this.maxTaps = 4; this.genBubble(); }
+    enter() { super.enter(); this.text = '除夕夜，屏幕那头的你问我有没有女朋友'; this.hint = '轻触消息气泡'; this.bubbles = []; this.tapped = 0; this.maxTaps = 4; this.stars = makeStars(this.g.w, this.g.h, 40, 1.5); this.genBubble(); }
     genBubble() {
         const msgs = ['在吗？', '有没有女朋友？', '...其实', '我也喜欢你'];
         if (this.bubbles.length < msgs.length) {
-            this.bubbles.push({ x: U.rand(this.g.w * 0.15, this.g.w * 0.85), y: -40, text: msgs[this.bubbles.length], vy: 0, tapped: false, life: 0 });
+            const slot = this.bubbles.length;
+            this.bubbles.push({ x: this.g.w * (0.25 + slot * 0.17), y: -40, text: msgs[slot], vy: 0, tapped: false, life: 0 });
         }
     }
     update(dt) {
@@ -1275,8 +1285,7 @@ class S3 extends Scene {
         // Phone glow
         wcWash(ctx, w / 2, h * 0.5, 200, C.sky, 0.15);
         drawPaperTexture(ctx, w, h);
-        // Stars
-        if (!this.stars) this.stars = makeStars(w, h, 40, 1.5);
+        // Stars (initialized in enter)
         drawStars(ctx, this.stars, U.T);
         // Fireworks
         const fwT = (U.T * 0.5) % 3;
@@ -1331,7 +1340,7 @@ class S4 extends Scene {
         super.update(dt);
         this.target.x = this.g.w / 2; this.target.y = this.g.h * 0.42;
         // Spawn ambient petals
-        if (Math.random() < 0.03) {
+        if (Math.random() < 0.06) {
             this.petals.push({ x: U.rand(0, this.g.w), y: -20, vx: U.rand(-0.5, 0.5), vy: U.rand(0.5, 1.5), rot: 0, vrot: U.rand(-0.02, 0.02), placed: false, size: U.rand(8, 14) });
         }
         for (const p of this.petals) {
@@ -1417,10 +1426,12 @@ class S5 extends Scene {
         const sx = w * 0.75, sy = h * 0.2;
         wcWash(ctx, sx, sy, 80, C.honey, 0.3);
         fCircle(ctx, sx, sy, 30, C.honeyDeep);
-        // Ocean
+        // Ocean (only fill the ocean area, don't overwrite sky)
         const oceanY = h * 0.45;
-        drawSky(ctx, w, h, C.sky, C.oceanLight, C.ocean);
-        ctx.fillStyle = C.ocean;
+        const og = ctx.createLinearGradient(0, oceanY, 0, h * 0.7);
+        og.addColorStop(0, C.oceanLight);
+        og.addColorStop(1, C.ocean);
+        ctx.fillStyle = og;
         ctx.fillRect(0, oceanY, w, h * 0.25);
         // Wave animation
         ctx.strokeStyle = C.rgba(C.white, 0.3); ctx.lineWidth = 2;
@@ -1455,16 +1466,16 @@ class S5 extends Scene {
             ctx.restore();
         }
         ctx.restore();
-        // Characters with surfboards
-        const sc = Math.min(1.3, w / 300);
-        drawBoy(ctx, w * 0.3, h * 0.58, sc, { expression: 'happy', blush: true });
-        drawGirl(ctx, w * 0.7, h * 0.58, sc, { expression: 'happy', blush: true });
-        // Surfboard
+        // Surfboard (drawn before characters so it's behind them)
         ctx.save();
         ctx.fillStyle = C.coral;
         ctx.filter = 'blur(0.5px)';
         fRR(ctx, w * 0.4, h * 0.66, w * 0.2, 6, 3, C.coral);
         ctx.restore();
+        // Characters
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.3, h * 0.58, sc, { expression: 'happy', blush: true });
+        drawGirl(ctx, w * 0.7, h * 0.58, sc, { expression: 'happy', blush: true });
     }
     onDown(x, y) {
         const oceanY = this.g.h * 0.45;
@@ -1536,7 +1547,7 @@ class S6 extends Scene {
 
 // ==================== SCENE 7: Job Loss (Rainy Day) ====================
 class S7 extends Scene {
-    enter() { super.enter(); this.text = '那天下了很大的雨，你很难过'; this.hint = '轻轻擦去她的眼泪'; this.drops = []; this.tearWipe = 0; this.wiping = false; for (let i = 0; i < 80; i++) this.drops.push({ x: U.rand(0, 2000), y: U.rand(0, 600), speed: U.rand(200, 400), len: U.rand(10, 20), maxY: this.g.h }); }
+    enter() { super.enter(); this.text = '那天下了很大的雨，你很难过'; this.hint = '轻轻擦去她的眼泪'; this.drops = []; this.tearWipe = 0; this.wiping = false; for (let i = 0; i < 80; i++) this.drops.push({ x: U.rand(0, 800), y: U.rand(0, 600), speed: U.rand(200, 400), len: U.rand(10, 20), maxY: this.g.h }); }
     update(dt) { super.update(dt); if (this.tearWipe >= 1 && this.t > 1.5) this.done = true; }
     render(ctx) {
         const w = this.g.w, h = this.g.h;
@@ -1563,11 +1574,11 @@ class S7 extends Scene {
         // Umbrella handle
         ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(ux, uy + 50); ctx.stroke();
-        // Girl with tears
+        // Girl with tears (centered) and boy beside her
         const sc = Math.min(1.3, w / 300);
-        drawGirl(ctx, w * 0.5, h * 0.52, sc, { expression: 'sad' });
-        drawBoy(ctx, w * 0.5, h * 0.52, sc * 0.8, { expression: 'sad' });
-        // Tears
+        drawGirl(ctx, w * 0.55, h * 0.52, sc, { expression: 'sad' });
+        drawBoy(ctx, w * 0.4, h * 0.54, sc * 0.85, { expression: 'sad' });
+        // Tears on girl's face
         if (!this.wiping || this.tearWipe < 1) {
             const tearY = h * 0.5 + Math.sin(this.t * 2) * 3;
             ctx.save();
@@ -1575,7 +1586,7 @@ class S7 extends Scene {
             ctx.filter = 'blur(0.5px)';
             for (let i = 0; i < 3 - Math.floor(this.tearWipe * 3); i++) {
                 ctx.beginPath();
-                ctx.ellipse(w * 0.5 - 10 + i * 10, tearY + 20 + i * 5, 2, 8, 0, 0, Math.PI*2);
+                ctx.ellipse(w * 0.55 - 10 + i * 10, tearY + 20 + i * 5, 2, 8, 0, 0, Math.PI*2);
                 ctx.fill();
             }
             ctx.restore();
@@ -1587,23 +1598,23 @@ class S7 extends Scene {
             ctx.globalAlpha = 0.6;
             ctx.filter = 'blur(1px)';
             ctx.beginPath();
-            ctx.arc(w * 0.5, h * 0.5, 35, -Math.PI/2, -Math.PI/2 + this.tearWipe * Math.PI * 2);
+            ctx.arc(w * 0.55, h * 0.5, 35, -Math.PI/2, -Math.PI/2 + this.tearWipe * Math.PI * 2);
             ctx.stroke();
             ctx.restore();
         }
     }
     onDown(x, y) {
-        if (U.dist(x, y, this.g.w * 0.5, this.g.h * 0.5) < 50) { this.wiping = true; }
+        if (U.dist(x, y, this.g.w * 0.55, this.g.h * 0.5) < 50) { this.wiping = true; }
     }
     onMove(x, y) {
         if (this.wiping) {
-            if (U.dist(x, y, this.g.w * 0.5, this.g.h * 0.5) < 50) {
-                this.tearWipe = Math.min(1, this.tearWipe + 0.02);
+            if (U.dist(x, y, this.g.w * 0.55, this.g.h * 0.5) < 50) {
+                this.tearWipe = Math.min(1, this.tearWipe + 0.03);
                 if (Math.random() < 0.3) this.g.ps.spawn(x, y, 'sparkle', 2, { size: 2, color: C.skyLight, spread: 0.5, life: 0.8, gravity: 0 });
             }
         }
     }
-    onUp() { if (this.tearWipe >= 1) { this.wiping = false; this.hint = ''; this.text = '别哭，有我在'; this.t = 0; this.g.ps.spawn(this.g.w/2, this.g.h*0.5, 'heart', 8, { size: 4, color: C.coral, spread: 2, life: 2, gravity: -0.03 }); } }
+    onUp() { if (this.tearWipe >= 1) { this.wiping = false; this.hint = ''; this.text = '别哭，有我在'; this.t = 0; this.g.ps.spawn(this.g.w * 0.55, this.g.h * 0.5, 'heart', 8, { size: 4, color: C.coral, spread: 2, life: 2, gravity: -0.03 }); } }
 }
 
 // ==================== SCENE 8: Self Media (Studio) ====================
@@ -1754,13 +1765,13 @@ class S10 extends Scene {
 
 // ==================== SCENE 11: Late Home ====================
 class S11 extends Scene {
-    enter() { super.enter(); this.text = '加班到很晚回家，你和仙姑都在等我'; this.hint = '轻触窗户，点亮回家的灯'; this.lightsOn = false; this.lightT = 0; }
+    enter() { super.enter(); this.text = '加班到很晚回家，你和仙姑都在等我'; this.hint = '轻触窗户，点亮回家的灯'; this.lightsOn = false; this.lightT = 0; this.stars = makeStars(this.g.w, this.g.h, 50, 1.5); }
     update(dt) { super.update(dt); if (this.lightsOn) { this.lightT += dt; if (this.lightT > 2) this.done = true; } }
     render(ctx) {
         const w = this.g.w, h = this.g.h;
         // Night scene
         drawSky(ctx, w, h, C.navy, C.navyLight, C.purple);
-        if (!this.stars) this.stars = makeStars(w, h, 50, 1.5);
+        // Stars (initialized in enter)
         drawStars(ctx, this.stars, U.T);
         drawPaperTexture(ctx, w, h);
         drawGround(ctx, w, h, h * 0.72, C.purple, C.navy);
@@ -1988,6 +1999,8 @@ class Game {
         if (type === 'down') {
             this.pointerDown = true;
             this.px = x; this.py = y;
+            // Capture pointer so drag continues even if finger leaves canvas
+            try { this.canvas.setPointerCapture(e.pointerId); } catch (err) {}
             if (this.state === 'playing') {
                 this.scenes[this.currentScene].onDown(x, y);
                 if (!this.audioStarted) { this.music.play(); this.audioStarted = true; }
@@ -1999,6 +2012,7 @@ class Game {
             this.px = x; this.py = y;
         } else if (type === 'up') {
             this.pointerDown = false;
+            try { this.canvas.releasePointerCapture(e.pointerId); } catch (err) {}
             if (this.state === 'playing') {
                 this.scenes[this.currentScene].onUp(x, y);
             }
