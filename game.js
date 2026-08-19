@@ -1,32 +1,40 @@
 'use strict';
 
 // ============================================================
-//  Canvas Interactive Story Game - Qixi Festival Surprise
-//  Pure HTML5 Canvas, no frameworks
+//  Canvas Watercolor Story Game - Qixi Festival Surprise
+//  Pure HTML5 Canvas, warm watercolor picture book style
 // ============================================================
 
-// ==================== COLOR CONSTANTS ====================
+// ==================== COLOR PALETTE ====================
 const C = {
-    cream: '#FFF8F0',
-    warmWhite: '#FFFDF9',
-    peach: '#FFD4B8',
-    coral: '#FF8B7B',
-    coralLight: '#FFB5A0',
-    honey: '#FFC857',
-    warmBrown: '#8B6F5C',
-    darkBrown: '#5C4033',
-    skin: '#FFD4B8',
+    // Base palette
+    cream: '#FFF8F0', warmWhite: '#FFFDF9', paper: '#FBF6EE',
+    peach: '#FFD4B8', peachDeep: '#FFB088',
+    coral: '#FF8B7B', coralLight: '#FFB5A0', coralDeep: '#E07060',
+    honey: '#FFC857', honeyDeep: '#E8A830',
+    warmBrown: '#8B6F5C', darkBrown: '#5C4033',
+    brown: '#7A5C4A', brownLight: '#A88870',
+    skin: '#FFD4B8', skinShadow: '#E8B898', skinDeep: '#D4A088',
     white: '#FFFFFF',
-    navy: '#2A2050',
-    purple: '#3A2C5C',
-    gray: '#6B6B80',
-    darkGray: '#3D3D4A',
-    sky: '#4A90D9',
-    ocean: '#2E86AB',
-    sand: '#F4E4BC',
-    leaf: '#7CB342',
-    rose: '#E91E63',
-    gold: '#FFD700'
+    // Atmosphere
+    navy: '#2A2050', navyLight: '#3D2F6B', purple: '#3A2C5C', purpleLight: '#5A4880',
+    gray: '#9B9BAA', grayLight: '#C5C5D0', darkGray: '#4D4D5A',
+    // Nature
+    sky: '#7BB8E0', skyDeep: '#5A9FD9', skyLight: '#B8D8F0',
+    ocean: '#3E8EAB', oceanDeep: '#2E6E8B', oceanLight: '#6BB0C8',
+    sand: '#F4E4BC', sandDeep: '#E0CC94',
+    leaf: '#7CB342', leafDeep: '#5A8B30', leafLight: '#A4D870',
+    rose: '#E91E63', roseLight: '#F06292',
+    gold: '#FFD700', goldLight: '#FFE873',
+    // Watercolor accents
+    sakura: '#FFB7C5', sakuraDeep: '#FF8FA8',
+    sunset: '#FF9A56', sunsetDeep: '#E87040',
+    lavender: '#B8A0D0', lavenderDeep: '#9070B0',
+    mint: '#A8D8C0', mintDeep: '#70B8A0',
+    // Shadows
+    shadow: 'rgba(60,40,30,0.15)', shadowDeep: 'rgba(60,40,30,0.25)',
+    // Transparency helpers
+    rgba: (c, a) => { const h = c.replace('#',''); const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16); return `rgba(${r},${g},${b},${a})`; }
 };
 
 const FT = "'Ma Shan Zheng', serif";
@@ -45,29 +53,101 @@ const U = {
     easeOut(t) { return 1 - (1 - t) * (1 - t); },
     easeIn(t) { return t * t; },
     easeOutBack(t) { const c = 1.70158; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); },
+    easeElastic(t) { if (t===0||t===1) return t; const c=2*Math.PI/3; return Math.pow(2,-10*t)*Math.sin((t*10-0.75)*c)+1; },
     T: 0
 };
 
-// ==================== DRAWING HELPERS ====================
-function fRect(ctx, x, y, w, h, c) {
-    ctx.fillStyle = c;
+// ==================== WATERCOLOR HELPERS ====================
+// Soft watercolor edge shape
+function wcShape(ctx, drawFn, blur, alpha, layers) {
+    blur = blur || 1.5;
+    alpha = alpha || 0.6;
+    layers = layers || 2;
+    ctx.save();
+    for (let i = 0; i < layers; i++) {
+        ctx.globalAlpha = alpha / layers;
+        ctx.filter = `blur(${blur}px)`;
+        drawFn(ctx);
+    }
+    ctx.restore();
+}
+
+// Watercolor blob - organic rounded shape
+function wcBlob(ctx, x, y, w, h, color, opts) {
+    opts = opts || {};
+    const blur = opts.blur || 2;
+    const alpha = opts.alpha || 0.5;
+    const points = opts.points || 8;
+    const variance = opts.variance || 0.15;
+    ctx.save();
+    ctx.translate(x, y);
+    for (let layer = 0; layer < 2; layer++) {
+        ctx.globalAlpha = alpha / 2;
+        ctx.filter = `blur(${blur}px)`;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        for (let i = 0; i <= points; i++) {
+            const a = (i / points) * Math.PI * 2;
+            const rx = w * (1 + Math.sin(a * 3 + layer) * variance);
+            const ry = h * (1 + Math.cos(a * 2 + layer) * variance);
+            const px = Math.cos(a) * rx;
+            const py = Math.sin(a) * ry;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+// Watercolor gradient fill
+function wcGradient(ctx, x, y, w, h, c1, c2, angle) {
+    angle = angle || Math.PI / 2;
+    const cx = x + w / 2, cy = y + h / 2;
+    const dx = Math.cos(angle) * w / 2, dy = Math.sin(angle) * h / 2;
+    const g = ctx.createLinearGradient(cx - dx, cy - dy, cx + dx, cy + dy);
+    g.addColorStop(0, c1);
+    g.addColorStop(1, c2);
+    ctx.fillStyle = g;
     ctx.fillRect(x, y, w, h);
 }
 
-function fCircle(ctx, x, y, r, c) {
-    ctx.fillStyle = c;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+// Radial watercolor wash
+function wcWash(ctx, x, y, r, color, alpha) {
+    alpha = alpha || 0.3;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color.replace(')', `,${alpha})`).replace('rgb', 'rgba').replace('#', 'rgba('));
+    // Fallback if color is hex
+    if (color.startsWith('#')) {
+        const h = color.replace('#','');
+        const r2=parseInt(h.substr(0,2),16),g2=parseInt(h.substr(2,2),16),b2=parseInt(h.substr(4,2),16);
+        g.addColorStop(0, `rgba(${r2},${g2},${b2},${alpha})`);
+        g.addColorStop(0.6, `rgba(${r2},${g2},${b2},${alpha*0.3})`);
+        g.addColorStop(1, `rgba(${r2},${g2},${b2},0)`);
+    } else {
+        g.addColorStop(0, color);
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
 }
 
-function sCircle(ctx, x, y, r, c, lw) {
-    ctx.strokeStyle = c;
-    ctx.lineWidth = lw || 2;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.stroke();
+// Paper texture overlay
+function drawPaperTexture(ctx, w, h) {
+    ctx.save();
+    ctx.globalAlpha = 0.025;
+    for (let i = 0; i < 300; i++) {
+        ctx.fillStyle = Math.random() > 0.5 ? C.darkBrown : C.warmWhite;
+        ctx.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+    }
+    ctx.restore();
 }
+
+// ==================== DRAWING HELPERS ====================
+function fRect(ctx, x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x, y, w, h); }
+function fCircle(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+function sCircle(ctx, x, y, r, c, lw) { ctx.strokeStyle = c; ctx.lineWidth = lw || 2; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); }
 
 function rrPath(ctx, x, y, w, h, r) {
     r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -84,302 +164,22 @@ function rrPath(ctx, x, y, w, h, r) {
     ctx.closePath();
 }
 
-function fRR(ctx, x, y, w, h, r, c) {
-    rrPath(ctx, x, y, w, h, r);
-    ctx.fillStyle = c;
+function fRR(ctx, x, y, w, h, r, c) { rrPath(ctx, x, y, w, h, r); ctx.fillStyle = c; ctx.fill(); }
+
+// Soft shadow ellipse
+function drawShadow(ctx, x, y, w, h) {
+    ctx.save();
+    ctx.globalAlpha = 0.15;
+    ctx.filter = 'blur(3px)';
+    ctx.fillStyle = C.darkBrown;
+    ctx.beginPath();
+    ctx.ellipse(x, y, w, h, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 }
 
-function sRR(ctx, x, y, w, h, r, c, lw) {
-    rrPath(ctx, x, y, w, h, r);
-    ctx.strokeStyle = c;
-    ctx.lineWidth = lw || 2;
-    ctx.stroke();
-}
-
-function heartPath(ctx, x, y, s) {
-    const ty = y - s * 0.5;
-    ctx.beginPath();
-    ctx.moveTo(x, ty + s * 0.3);
-    ctx.bezierCurveTo(x, ty, x - s, ty, x - s, ty + s * 0.3);
-    ctx.bezierCurveTo(x - s, ty + s * 0.6, x - s * 0.5, ty + s * 0.9, x, ty + s * 1.2);
-    ctx.bezierCurveTo(x + s * 0.5, ty + s * 0.9, x + s, ty + s * 0.6, x + s, ty + s * 0.3);
-    ctx.bezierCurveTo(x + s, ty, x, ty, x, ty + s * 0.3);
-    ctx.closePath();
-}
-
-function fHeart(ctx, x, y, s, c) {
-    heartPath(ctx, x, y, s);
-    ctx.fillStyle = c;
-    ctx.fill();
-}
-
-function starPath(ctx, x, y, r, p) {
-    p = p || 5;
-    ctx.beginPath();
-    for (let i = 0; i < p * 2; i++) {
-        const a = (i * Math.PI) / p - Math.PI / 2;
-        const rad = i % 2 === 0 ? r : r * 0.4;
-        const px = x + Math.cos(a) * rad;
-        const py = y + Math.sin(a) * rad;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-}
-
-function fStar(ctx, x, y, r, c) {
-    starPath(ctx, x, y, r, 5);
-    ctx.fillStyle = c;
-    ctx.fill();
-}
-
-function dLine(ctx, x1, y1, x2, y2, c, w) {
-    ctx.strokeStyle = c;
-    ctx.lineWidth = w || 2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-}
-
-function dCurve(ctx, x1, y1, cx, cy, x2, y2, c, w) {
-    ctx.strokeStyle = c;
-    ctx.lineWidth = w || 2;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.quadraticCurveTo(cx, cy, x2, y2);
-    ctx.stroke();
-}
-
-function fText(ctx, t, x, y, font, c, align, bl) {
-    ctx.fillStyle = c;
-    ctx.font = font;
-    ctx.textAlign = align || 'left';
-    ctx.textBaseline = bl || 'alphabetic';
-    ctx.fillText(t, x, y);
-}
-
-function gradV(ctx, w, h, stops) {
-    const g = ctx.createLinearGradient(0, 0, 0, h);
-    for (const s of stops) g.addColorStop(s[0], s[1]);
-    return g;
-}
-
-function gradD(ctx, w, h, stops, angle) {
-    const x1 = Math.cos(angle) * h / 2;
-    const y1 = Math.sin(angle) * h / 2;
-    const g = ctx.createLinearGradient(w / 2 - x1, h / 2 - y1, w / 2 + x1, h / 2 + y1);
-    for (const s of stops) g.addColorStop(s[0], s[1]);
-    return g;
-}
-
-// ==================== PARTICLE SYSTEM ====================
-class Particle {
-    constructor(x, y, vx, vy, life, size, color, type) {
-        this.x = x; this.y = y;
-        this.vx = vx; this.vy = vy;
-        this.life = life; this.maxLife = life;
-        this.size = size; this.color = color;
-        this.type = type;
-        this.rotation = Math.random() * Math.PI * 2;
-        this.rotSpeed = (Math.random() - 0.5) * 4;
-        this.twinkle = Math.random() * Math.PI * 2;
-    }
-
-    update(dt) {
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
-        this.rotation += this.rotSpeed * dt;
-        this.twinkle += dt * 8;
-
-        if (this.type === 'heart') {
-            this.vy -= 40 * dt;
-            this.vx *= 0.98;
-        } else if (this.type === 'petal') {
-            this.vy += 30 * dt;
-            this.vx += Math.sin(this.life * 3) * 15 * dt;
-        } else if (this.type === 'star') {
-            this.vx *= 0.95;
-            this.vy *= 0.95;
-        } else if (this.type === 'splash') {
-            this.vy += 350 * dt;
-        } else if (this.type === 'gold') {
-            this.vx *= 0.96;
-            this.vy *= 0.96;
-        } else if (this.type === 'firework') {
-            this.vy += 60 * dt;
-            this.vx *= 0.98;
-        }
-
-        this.life -= dt;
-    }
-
-    render(ctx) {
-        const a = Math.max(0, this.life / this.maxLife);
-        ctx.save();
-        ctx.globalAlpha = a;
-
-        if (this.type === 'heart') {
-            ctx.translate(this.x, this.y);
-            ctx.rotate(this.rotation);
-            fHeart(ctx, 0, 0, this.size, this.color);
-        } else if (this.type === 'petal') {
-            ctx.translate(this.x, this.y);
-            ctx.rotate(this.rotation);
-            ctx.fillStyle = this.color;
-            ctx.beginPath();
-            ctx.ellipse(0, 0, this.size, this.size * 0.5, 0, 0, Math.PI * 2);
-            ctx.fill();
-        } else if (this.type === 'star') {
-            const tw = Math.sin(this.twinkle) * 0.3 + 0.7;
-            ctx.globalAlpha = a * tw;
-            ctx.translate(this.x, this.y);
-            ctx.rotate(this.rotation);
-            fStar(ctx, 0, 0, this.size, this.color);
-        } else if (this.type === 'splash') {
-            fCircle(ctx, this.x, this.y, this.size, this.color);
-        } else if (this.type === 'gold') {
-            const sp = Math.sin(this.twinkle) * 0.5 + 0.5;
-            ctx.globalAlpha = a * sp;
-            ctx.translate(this.x, this.y);
-            fStar(ctx, 0, 0, this.size, 4);
-            ctx.fillStyle = this.color;
-        } else if (this.type === 'firework') {
-            ctx.translate(this.x, this.y);
-            fCircle(ctx, 0, 0, this.size, this.color);
-            ctx.globalAlpha = a * 0.5;
-            fCircle(ctx, 0, 0, this.size * 2, this.color);
-        }
-
-        ctx.restore();
-    }
-
-    get dead() { return this.life <= 0; }
-}
-
-class ParticleSystem {
-    constructor() {
-        this.list = [];
-    }
-
-    spawn(type, x, y, count, opts) {
-        opts = opts || {};
-        const colors = opts.colors || ['#FF8B7B', '#FFC857', '#FFD4B8', '#FFB5A0'];
-        const speed = opts.speed || 100;
-        const life = opts.life || 2;
-        const size = opts.size || 8;
-        for (let i = 0; i < count; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const sp = speed * (0.5 + Math.random() * 0.5);
-            const c = colors[Math.floor(Math.random() * colors.length)];
-            this.list.push(new Particle(
-                x + (Math.random() - 0.5) * 20,
-                y + (Math.random() - 0.5) * 20,
-                Math.cos(a) * sp,
-                Math.sin(a) * sp,
-                life * (0.7 + Math.random() * 0.6),
-                size * (0.6 + Math.random() * 0.8),
-                c, type
-            ));
-        }
-    }
-
-    burstHearts(x, y, count) {
-        for (let i = 0; i < count; i++) {
-            const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.2;
-            const sp = U.rand(60, 140);
-            this.list.push(new Particle(
-                x + U.rand(-30, 30), y + U.rand(-20, 20),
-                Math.cos(a) * sp, Math.sin(a) * sp - 30,
-                U.rand(1.5, 3), U.rand(5, 12),
-                ['#FF8B7B', '#FFB5A0', '#E91E63'][U.randInt(0, 2)], 'heart'
-            ));
-        }
-    }
-
-    burstStars(x, y, count) {
-        for (let i = 0; i < count; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const sp = U.rand(50, 150);
-            this.list.push(new Particle(
-                x, y,
-                Math.cos(a) * sp, Math.sin(a) * sp,
-                U.rand(1, 2), U.rand(4, 10),
-                ['#FFC857', '#FFF8F0', '#FFD700'][U.randInt(0, 2)], 'star'
-            ));
-        }
-    }
-
-    burstSplash(x, y, count) {
-        for (let i = 0; i < count; i++) {
-            const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
-            const sp = U.rand(80, 200);
-            this.list.push(new Particle(
-                x, y,
-                Math.cos(a) * sp, Math.sin(a) * sp - 50,
-                U.rand(0.8, 1.5), U.rand(3, 8),
-                '#4A90D9', 'splash'
-            ));
-        }
-    }
-
-    burstGold(x, y, count) {
-        for (let i = 0; i < count; i++) {
-            const a = Math.random() * Math.PI * 2;
-            const sp = U.rand(20, 60);
-            this.list.push(new Particle(
-                x + U.rand(-20, 20), y + U.rand(-20, 20),
-                Math.cos(a) * sp, Math.sin(a) * sp,
-                U.rand(1, 2.5), U.rand(3, 8),
-                '#FFD700', 'gold'
-            ));
-        }
-    }
-
-    rainHearts(w, count) {
-        for (let i = 0; i < count; i++) {
-            this.list.push(new Particle(
-                U.rand(0, w), -20,
-                U.rand(-20, 20), U.rand(30, 80),
-                U.rand(3, 6), U.rand(6, 14),
-                ['#FF8B7B', '#FFB5A0', '#E91E63', '#FFC857'][U.randInt(0, 3)], 'heart'
-            ));
-        }
-    }
-
-    firework(x, y) {
-        const colors = ['#FF8B7B', '#FFC857', '#FFD4B8', '#4A90D9', '#7CB342', '#E91E63', '#FFD700'];
-        const c = colors[U.randInt(0, colors.length - 1)];
-        for (let i = 0; i < 40; i++) {
-            const a = (i / 40) * Math.PI * 2;
-            const sp = U.rand(80, 180);
-            this.list.push(new Particle(
-                x, y,
-                Math.cos(a) * sp, Math.sin(a) * sp,
-                U.rand(1.5, 3), U.rand(3, 7),
-                c, 'firework'
-            ));
-        }
-    }
-
-    update(dt) {
-        for (let i = this.list.length - 1; i >= 0; i--) {
-            this.list[i].update(dt);
-            if (this.list[i].dead) this.list.splice(i, 1);
-        }
-    }
-
-    render(ctx) {
-        for (const p of this.list) p.render(ctx);
-    }
-
-    clear() { this.list = []; }
-}
-
-// ==================== CHARACTER DRAWING ====================
+// ==================== CHARACTER: BOY ====================
+// Middle-Q ratio (1:3.5), watercolor picture book style
 function drawBoy(ctx, x, y, s, o) {
     o = o || {};
     const expr = o.expression || 'happy';
@@ -387,77 +187,230 @@ function drawBoy(ctx, x, y, s, o) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(s, s);
-    const sk = C.peach, hr = C.darkBrown, sh = C.coral;
+    const sk = C.skin, skS = C.skinShadow, hr = C.darkBrown, hrH = C.brownLight, sh = C.coral;
 
-    // Legs
-    ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    // --- Ground shadow ---
+    drawShadow(ctx, 0, 95, 28, 7);
+
+    // --- Legs ---
+    ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 9; ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-9, 68); ctx.lineTo(-9, 90);
-    ctx.moveTo(9, 68); ctx.lineTo(9, 90);
+    ctx.moveTo(-8, 65); ctx.quadraticCurveTo(-9, 80, -8, 92);
+    ctx.moveTo(8, 65); ctx.quadraticCurveTo(9, 80, 8, 92);
     ctx.stroke();
-    fCircle(ctx, -9, 92, 6, C.darkBrown);
-    fCircle(ctx, 9, 92, 6, C.darkBrown);
+    // Shoes
+    ctx.fillStyle = C.darkBrown;
+    ctx.beginPath(); ctx.ellipse(-9, 93, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(9, 93, 8, 5, 0, 0, Math.PI*2); ctx.fill();
 
-    // Body
-    fRR(ctx, -20, 32, 40, 40, 12, sh);
-
-    // Arms
-    ctx.strokeStyle = sh; ctx.lineWidth = 7;
+    // --- Body (shirt) ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    // Main torso
+    const tg = ctx.createLinearGradient(0, 30, 0, 70);
+    tg.addColorStop(0, sh);
+    tg.addColorStop(1, C.coralDeep);
+    ctx.fillStyle = tg;
     ctx.beginPath();
-    ctx.moveTo(-20, 38); ctx.quadraticCurveTo(-32, 48, -28, 62);
-    ctx.moveTo(20, 38); ctx.quadraticCurveTo(32, 48, 28, 62);
+    ctx.moveTo(-18, 32);
+    ctx.quadraticCurveTo(-22, 45, -20, 60);
+    ctx.quadraticCurveTo(-18, 68, -12, 65);
+    ctx.lineTo(12, 65);
+    ctx.quadraticCurveTo(18, 68, 20, 60);
+    ctx.quadraticCurveTo(22, 45, 18, 32);
+    ctx.closePath();
+    ctx.fill();
+    // Collar
+    ctx.fillStyle = C.cream;
+    ctx.beginPath();
+    ctx.moveTo(-6, 32); ctx.lineTo(0, 38); ctx.lineTo(6, 32);
+    ctx.lineTo(4, 30); ctx.lineTo(-4, 30);
+    ctx.closePath();
+    ctx.fill();
+    // Shirt fold lines
+    ctx.strokeStyle = C.rgba(C.coralDeep, 0.3); ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-10, 45); ctx.quadraticCurveTo(-8, 52, -10, 58);
+    ctx.moveTo(10, 45); ctx.quadraticCurveTo(8, 52, 10, 58);
     ctx.stroke();
-    fCircle(ctx, -28, 64, 5, sk);
-    fCircle(ctx, 28, 64, 5, sk);
+    ctx.restore();
 
-    // Neck
-    fRect(ctx, -5, 26, 10, 10, sk);
+    // --- Arms ---
+    ctx.strokeStyle = sh; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-18, 36); ctx.quadraticCurveTo(-28, 48, -24, 58);
+    ctx.moveTo(18, 36); ctx.quadraticCurveTo(28, 48, 24, 58);
+    ctx.stroke();
+    // Hands
+    fCircle(ctx, -24, 60, 5.5, sk);
+    fCircle(ctx, 24, 60, 5.5, sk);
 
-    // Head
-    fCircle(ctx, 0, 5, 26, sk);
+    // --- Neck ---
+    ctx.fillStyle = skS;
+    ctx.fillRect(-5, 24, 10, 12);
+    ctx.fillStyle = sk;
+    ctx.fillRect(-4.5, 24, 9, 8);
 
-    // Hair
+    // --- Head shape ---
+    ctx.save();
+    ctx.filter = 'blur(0.3px)';
+    ctx.fillStyle = sk;
+    ctx.beginPath();
+    ctx.ellipse(0, 5, 24, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Face shadow
+    ctx.fillStyle = C.rgba(skS, 0.4);
+    ctx.beginPath();
+    ctx.ellipse(0, 12, 22, 18, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.restore();
+
+    // --- Ears ---
+    fCircle(ctx, -23, 8, 4, sk);
+    fCircle(ctx, 23, 8, 4, sk);
+    fCircle(ctx, -23, 8, 2, skS);
+    fCircle(ctx, 23, 8, 2, skS);
+
+    // --- Hair (layered, with strands) ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
     ctx.fillStyle = hr;
+    // Back hair
     ctx.beginPath();
-    ctx.arc(0, 5, 26, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.ellipse(0, -2, 26, 24, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    // Top hair
+    ctx.beginPath();
+    ctx.ellipse(0, -8, 25, 20, 0, Math.PI * 1.1, Math.PI * 1.9);
+    ctx.fill();
+    // Side bangs
+    ctx.beginPath();
+    ctx.moveTo(-24, -5);
+    ctx.quadraticCurveTo(-20, -22, -8, -24);
+    ctx.quadraticCurveTo(-12, -10, -14, 2);
+    ctx.quadraticCurveTo(-20, 0, -24, -5);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(-12, -12, 9, 10, -0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.moveTo(24, -5);
+    ctx.quadraticCurveTo(20, -22, 8, -24);
+    ctx.quadraticCurveTo(12, -10, 14, 2);
+    ctx.quadraticCurveTo(20, 0, 24, -5);
+    ctx.fill();
+    // Front bangs with strands
     ctx.beginPath();
-    ctx.ellipse(12, -12, 9, 10, 0.2, 0, Math.PI * 2); ctx.fill();
+    ctx.moveTo(-20, -10);
+    ctx.quadraticCurveTo(-14, -20, -5, -18);
+    ctx.quadraticCurveTo(-8, -5, -10, 2);
+    ctx.quadraticCurveTo(-16, -2, -20, -10);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(20, -10);
+    ctx.quadraticCurveTo(14, -20, 5, -18);
+    ctx.quadraticCurveTo(8, -5, 10, 2);
+    ctx.quadraticCurveTo(16, -2, 20, -10);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-6, -20);
+    ctx.quadraticCurveTo(0, -22, 6, -20);
+    ctx.quadraticCurveTo(4, -8, 0, -5);
+    ctx.quadraticCurveTo(-4, -8, -6, -20);
+    ctx.fill();
+    // Hair highlight
+    ctx.fillStyle = hrH;
+    ctx.beginPath();
+    ctx.ellipse(-8, -15, 6, 3, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(8, -15, 6, 3, 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
-    // Eyes
-    if (!blink) {
-        fCircle(ctx, -9, 5, 3.5, C.darkBrown);
-        fCircle(ctx, 9, 5, 3.5, C.darkBrown);
-        fCircle(ctx, -8, 4, 1.2, C.white);
-        fCircle(ctx, 10, 4, 1.2, C.white);
-    } else {
-        ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(-9, 5, 4, 0, Math.PI); ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(9, 5, 4, 0, Math.PI); ctx.stroke();
-    }
-
-    // Mouth
-    ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2; ctx.lineCap = 'round';
-    if (expr === 'happy') {
-        ctx.beginPath(); ctx.arc(0, 14, 5, 0.2, Math.PI - 0.2); ctx.stroke();
+    // --- Eyebrows ---
+    ctx.strokeStyle = hr; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    if (expr === 'happy' || expr === 'smile') {
+        ctx.beginPath(); ctx.moveTo(-14, -2); ctx.lineTo(-6, -4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, -4); ctx.lineTo(14, -2); ctx.stroke();
     } else if (expr === 'sad') {
-        ctx.beginPath(); ctx.arc(0, 20, 5, Math.PI + 0.2, Math.PI * 2 - 0.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-14, -4); ctx.lineTo(-6, -1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, -1); ctx.lineTo(14, -4); ctx.stroke();
     } else if (expr === 'surprised') {
-        fCircle(ctx, 0, 14, 3, C.darkBrown);
+        ctx.beginPath(); ctx.arc(-10, -3, 4, Math.PI, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(10, -3, 4, Math.PI, 0); ctx.stroke();
+    } else if (expr === 'shy') {
+        ctx.beginPath(); ctx.moveTo(-14, -1); ctx.quadraticCurveTo(-10, -5, -6, -3); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, -3); ctx.quadraticCurveTo(10, -5, 14, -1); ctx.stroke();
     }
 
-    // Blush
-    if (o.blush) {
-        fCircle(ctx, -14, 12, 3, 'rgba(255,139,123,0.3)');
-        fCircle(ctx, 14, 12, 3, 'rgba(255,139,123,0.3)');
+    // --- Eyes ---
+    if (!blink) {
+        // Eye whites
+        ctx.fillStyle = C.white;
+        ctx.beginPath(); ctx.ellipse(-10, 5, 5, 6, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(10, 5, 5, 6, 0, 0, Math.PI*2); ctx.fill();
+        // Iris
+        ctx.fillStyle = C.darkBrown;
+        ctx.beginPath(); ctx.arc(-10, 6, 3.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(10, 6, 3.5, 0, Math.PI*2); ctx.fill();
+        // Pupil
+        ctx.fillStyle = C.navy;
+        ctx.beginPath(); ctx.arc(-10, 6, 2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(10, 6, 2, 0, Math.PI*2); ctx.fill();
+        // Highlight
+        ctx.fillStyle = C.white;
+        ctx.beginPath(); ctx.arc(-9, 5, 1.2, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(11, 5, 1.2, 0, Math.PI*2); ctx.fill();
+        // Eyelashes (subtle)
+        ctx.strokeStyle = hr; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-14, 1); ctx.lineTo(-15, -1);
+        ctx.moveTo(14, 1); ctx.lineTo(15, -1);
+        ctx.stroke();
+    } else {
+        ctx.strokeStyle = hr; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-14, 5); ctx.quadraticCurveTo(-10, 8, -6, 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, 5); ctx.quadraticCurveTo(10, 8, 14, 5); ctx.stroke();
     }
+
+    // --- Nose ---
+    ctx.strokeStyle = C.rgba(skS, 0.6); ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 8); ctx.quadraticCurveTo(-1, 11, 1, 12);
+    ctx.stroke();
+
+    // --- Mouth ---
+    ctx.strokeStyle = C.coralDeep; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    if (expr === 'happy' || expr === 'smile') {
+        ctx.beginPath();
+        ctx.moveTo(-5, 17); ctx.quadraticCurveTo(0, 22, 5, 17);
+        ctx.stroke();
+    } else if (expr === 'sad') {
+        ctx.beginPath();
+        ctx.moveTo(-5, 19); ctx.quadraticCurveTo(0, 15, 5, 19);
+        ctx.stroke();
+    } else if (expr === 'surprised') {
+        ctx.fillStyle = C.coralDeep;
+        ctx.beginPath(); ctx.ellipse(0, 19, 3, 4, 0, 0, Math.PI*2); ctx.fill();
+    } else if (expr === 'shy') {
+        ctx.strokeStyle = C.coralDeep; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-3, 18); ctx.quadraticCurveTo(0, 20, 3, 18);
+        ctx.stroke();
+    }
+
+    // --- Blush ---
+    if (o.blush) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.filter = 'blur(2px)';
+        fCircle(ctx, -13, 14, 4, C.coral);
+        fCircle(ctx, 13, 14, 4, C.coral);
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
+// ==================== CHARACTER: GIRL (with glasses) ====================
 function drawGirl(ctx, x, y, s, o) {
     o = o || {};
     const expr = o.expression || 'happy';
@@ -465,186 +418,501 @@ function drawGirl(ctx, x, y, s, o) {
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(s, s);
-    const sk = C.peach, hr = C.darkBrown, dr = C.honey;
+    const sk = C.skin, skS = C.skinShadow, hr = C.darkBrown, hrH = C.brownLight, dr = C.honey;
 
-    // Legs
-    ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 7; ctx.lineCap = 'round';
+    // --- Ground shadow ---
+    drawShadow(ctx, 0, 95, 30, 7);
+
+    // --- Long hair behind body ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    ctx.fillStyle = hr;
+    ctx.beginPath(); ctx.ellipse(-24, 35, 10, 38, -0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(24, 35, 10, 38, 0.1, 0, Math.PI * 2); ctx.fill();
+    // Hair strands
+    ctx.strokeStyle = hrH; ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(-9, 68); ctx.lineTo(-9, 90);
-    ctx.moveTo(9, 68); ctx.lineTo(9, 90);
+    ctx.moveTo(-28, 20); ctx.quadraticCurveTo(-30, 40, -26, 65);
+    ctx.moveTo(28, 20); ctx.quadraticCurveTo(30, 40, 26, 65);
     ctx.stroke();
-    fCircle(ctx, -9, 92, 6, C.darkBrown);
-    fCircle(ctx, 9, 92, 6, C.darkBrown);
+    ctx.restore();
 
-    // Long hair behind body
-    ctx.fillStyle = hr;
-    ctx.beginPath(); ctx.ellipse(-22, 30, 8, 35, -0.1, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(22, 30, 8, 35, 0.1, 0, Math.PI * 2); ctx.fill();
-
-    // Body (dress)
-    fRR(ctx, -20, 32, 40, 40, 12, dr);
-
-    // Arms
-    ctx.strokeStyle = dr; ctx.lineWidth = 7;
+    // --- Legs ---
+    ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 9; ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(-20, 38); ctx.quadraticCurveTo(-32, 48, -28, 62);
-    ctx.moveTo(20, 38); ctx.quadraticCurveTo(32, 48, 28, 62);
+    ctx.moveTo(-8, 65); ctx.quadraticCurveTo(-9, 80, -8, 92);
+    ctx.moveTo(8, 65); ctx.quadraticCurveTo(9, 80, 8, 92);
     ctx.stroke();
-    fCircle(ctx, -28, 64, 5, sk);
-    fCircle(ctx, 28, 64, 5, sk);
+    // Shoes
+    ctx.fillStyle = C.coralDeep;
+    ctx.beginPath(); ctx.ellipse(-9, 93, 8, 5, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(9, 93, 8, 5, 0, 0, Math.PI*2); ctx.fill();
 
-    // Neck
-    fRect(ctx, -5, 26, 10, 10, sk);
-
-    // Long hair behind head
-    ctx.fillStyle = hr;
-    ctx.beginPath(); ctx.ellipse(-18, 5, 10, 28, -0.05, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(18, 5, 10, 28, 0.05, 0, Math.PI * 2); ctx.fill();
-
-    // Head
-    fCircle(ctx, 0, 5, 26, sk);
-
-    // Hair top
-    ctx.fillStyle = hr;
-    ctx.beginPath(); ctx.arc(0, 5, 26, Math.PI * 1.05, Math.PI * 1.95); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(-10, -10, 12, 10, -0.1, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(10, -10, 12, 10, 0.1, 0, Math.PI * 2); ctx.fill();
-
-    // Glasses
-    ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(-9, 5, 8, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.arc(9, 5, 8, 0, Math.PI * 2); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-1, 5); ctx.lineTo(1, 5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(-17, 3); ctx.lineTo(-22, 0); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(17, 3); ctx.lineTo(22, 0); ctx.stroke();
-
-    // Eyes behind glasses
-    if (!blink) {
-        fCircle(ctx, -9, 5, 3, C.darkBrown);
-        fCircle(ctx, 9, 5, 3, C.darkBrown);
-        fCircle(ctx, -8, 4, 1, C.white);
-        fCircle(ctx, 10, 4, 1, C.white);
-    } else {
-        ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(-9, 5, 4, 0, Math.PI); ctx.stroke();
-        ctx.beginPath(); ctx.arc(9, 5, 4, 0, Math.PI); ctx.stroke();
+    // --- Body (dress) ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    const dg = ctx.createLinearGradient(0, 30, 0, 72);
+    dg.addColorStop(0, dr);
+    dg.addColorStop(0.6, C.honeyDeep);
+    dg.addColorStop(1, C.honeyDeep);
+    ctx.fillStyle = dg;
+    ctx.beginPath();
+    ctx.moveTo(-16, 32);
+    ctx.quadraticCurveTo(-24, 50, -22, 68);
+    ctx.lineTo(-16, 65);
+    ctx.lineTo(16, 65);
+    ctx.lineTo(22, 68);
+    ctx.quadraticCurveTo(24, 50, 16, 32);
+    ctx.closePath();
+    ctx.fill();
+    // Dress pattern (polka dots)
+    ctx.fillStyle = C.rgba(C.cream, 0.3);
+    for (let dy = 38; dy < 64; dy += 10) {
+        for (let dx = -14; dx <= 14; dx += 12) {
+            ctx.beginPath(); ctx.arc(dx + (dy/10 % 2 === 0 ? 0 : 6), dy, 2, 0, Math.PI*2); ctx.fill();
+        }
     }
+    // Collar
+    ctx.fillStyle = C.cream;
+    ctx.beginPath();
+    ctx.moveTo(-5, 32); ctx.lineTo(0, 38); ctx.lineTo(5, 32);
+    ctx.lineTo(3, 30); ctx.lineTo(-3, 30);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
 
-    // Mouth
-    ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    // --- Arms ---
+    ctx.strokeStyle = dr; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(-16, 36); ctx.quadraticCurveTo(-26, 48, -22, 58);
+    ctx.moveTo(16, 36); ctx.quadraticCurveTo(26, 48, 22, 58);
+    ctx.stroke();
+    // Hands
+    fCircle(ctx, -22, 60, 5.5, sk);
+    fCircle(ctx, 22, 60, 5.5, sk);
+
+    // --- Neck ---
+    ctx.fillStyle = skS;
+    ctx.fillRect(-5, 24, 10, 12);
+    ctx.fillStyle = sk;
+    ctx.fillRect(-4.5, 24, 9, 8);
+
+    // --- Head ---
+    ctx.save();
+    ctx.filter = 'blur(0.3px)';
+    ctx.fillStyle = sk;
+    ctx.beginPath();
+    ctx.ellipse(0, 5, 24, 26, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = C.rgba(skS, 0.4);
+    ctx.beginPath();
+    ctx.ellipse(0, 12, 22, 18, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.restore();
+
+    // --- Ears ---
+    fCircle(ctx, -23, 8, 4, sk);
+    fCircle(ctx, 23, 8, 4, sk);
+    fCircle(ctx, -23, 8, 2, skS);
+    fCircle(ctx, 23, 8, 2, skS);
+
+    // --- Hair (layered with flow) ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    ctx.fillStyle = hr;
+    // Back hair frame
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 27, 28, 0, Math.PI * 0.9, Math.PI * 2.1);
+    ctx.fill();
+    // Top hair
+    ctx.beginPath();
+    ctx.ellipse(0, -10, 26, 22, 0, Math.PI * 1.05, Math.PI * 1.95);
+    ctx.fill();
+    // Side hair (longer, flowing)
+    ctx.beginPath();
+    ctx.moveTo(-25, -3);
+    ctx.quadraticCurveTo(-22, -26, -8, -28);
+    ctx.quadraticCurveTo(-15, -8, -16, 8);
+    ctx.quadraticCurveTo(-21, 6, -25, -3);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(25, -3);
+    ctx.quadraticCurveTo(22, -26, 8, -28);
+    ctx.quadraticCurveTo(15, -8, 16, 8);
+    ctx.quadraticCurveTo(21, 6, 25, -3);
+    ctx.fill();
+    // Front bangs (curtain style)
+    ctx.beginPath();
+    ctx.moveTo(-22, -12);
+    ctx.quadraticCurveTo(-12, -25, 0, -23);
+    ctx.quadraticCurveTo(-8, -8, -12, 0);
+    ctx.quadraticCurveTo(-18, -4, -22, -12);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(22, -12);
+    ctx.quadraticCurveTo(12, -25, 0, -23);
+    ctx.quadraticCurveTo(8, -8, 12, 0);
+    ctx.quadraticCurveTo(18, -4, 22, -12);
+    ctx.fill();
+    // Center bang
+    ctx.beginPath();
+    ctx.moveTo(-5, -22);
+    ctx.quadraticCurveTo(0, -20, 5, -22);
+    ctx.quadraticCurveTo(3, -10, 0, -8);
+    ctx.quadraticCurveTo(-3, -10, -5, -22);
+    ctx.fill();
+    // Hair highlights
+    ctx.fillStyle = hrH;
+    ctx.beginPath(); ctx.ellipse(-10, -18, 7, 3, -0.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, -18, 7, 3, 0.2, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+
+    // --- Glasses ---
+    ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+    // Lens fill (subtle)
+    ctx.fillStyle = C.rgba(C.white, 0.15);
+    ctx.beginPath(); ctx.ellipse(-10, 5, 9, 8, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 5, 9, 8, 0, 0, Math.PI*2); ctx.fill();
+    // Frame
+    ctx.beginPath(); ctx.ellipse(-10, 5, 9, 8, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(10, 5, 9, 8, 0, 0, Math.PI*2); ctx.stroke();
+    // Bridge
+    ctx.beginPath(); ctx.moveTo(-1, 4); ctx.lineTo(1, 4); ctx.stroke();
+    // Temple arms
+    ctx.beginPath(); ctx.moveTo(-19, 3); ctx.lineTo(-24, -1); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(19, 3); ctx.lineTo(24, -1); ctx.stroke();
+    // Glass glint
+    ctx.strokeStyle = C.rgba(C.white, 0.5); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(-12, 2, 5, Math.PI*1.3, Math.PI*1.6); ctx.stroke();
+    ctx.beginPath(); ctx.arc(8, 2, 5, Math.PI*1.3, Math.PI*1.6); ctx.stroke();
+
+    // --- Eyebrows (above glasses) ---
+    ctx.strokeStyle = hr; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
     if (expr === 'happy' || expr === 'smile') {
-        ctx.beginPath(); ctx.arc(0, 16, 4, 0.2, Math.PI - 0.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-15, -4); ctx.quadraticCurveTo(-10, -6, -5, -4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(5, -4); ctx.quadraticCurveTo(10, -6, 15, -4); ctx.stroke();
     } else if (expr === 'sad') {
-        ctx.beginPath(); ctx.arc(0, 22, 4, Math.PI + 0.2, Math.PI * 2 - 0.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-15, -6); ctx.lineTo(-5, -2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(5, -2); ctx.lineTo(15, -6); ctx.stroke();
+    } else if (expr === 'surprised') {
+        ctx.beginPath(); ctx.arc(-10, -4, 5, Math.PI, 0); ctx.stroke();
+        ctx.beginPath(); ctx.arc(10, -4, 5, Math.PI, 0); ctx.stroke();
+    } else if (expr === 'shy') {
+        ctx.beginPath(); ctx.moveTo(-15, -3); ctx.quadraticCurveTo(-10, -7, -5, -5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(5, -5); ctx.quadraticCurveTo(10, -7, 15, -3); ctx.stroke();
     }
 
-    // Blush
-    if (o.blush) {
-        fCircle(ctx, -15, 13, 3, 'rgba(255,139,123,0.3)');
-        fCircle(ctx, 15, 13, 3, 'rgba(255,139,123,0.3)');
+    // --- Eyes behind glasses ---
+    if (!blink) {
+        ctx.fillStyle = C.white;
+        ctx.beginPath(); ctx.ellipse(-10, 5, 4.5, 5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(10, 5, 4.5, 5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = C.darkBrown;
+        ctx.beginPath(); ctx.arc(-10, 6, 3, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(10, 6, 3, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = C.navy;
+        ctx.beginPath(); ctx.arc(-10, 6, 1.8, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(10, 6, 1.8, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = C.white;
+        ctx.beginPath(); ctx.arc(-9, 5, 1, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(11, 5, 1, 0, Math.PI*2); ctx.fill();
+    } else {
+        ctx.strokeStyle = hr; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-14, 5); ctx.quadraticCurveTo(-10, 8, -6, 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, 5); ctx.quadraticCurveTo(10, 8, 14, 5); ctx.stroke();
     }
+
+    // --- Nose ---
+    ctx.strokeStyle = C.rgba(skS, 0.5); ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, 9); ctx.quadraticCurveTo(-1.5, 12, 1, 13);
+    ctx.stroke();
+
+    // --- Mouth ---
+    ctx.strokeStyle = C.coralDeep; ctx.lineWidth = 2; ctx.lineCap = 'round';
+    if (expr === 'happy' || expr === 'smile') {
+        ctx.beginPath();
+        ctx.moveTo(-5, 18); ctx.quadraticCurveTo(0, 23, 5, 18);
+        ctx.stroke();
+    } else if (expr === 'sad') {
+        ctx.beginPath();
+        ctx.moveTo(-5, 20); ctx.quadraticCurveTo(0, 16, 5, 20);
+        ctx.stroke();
+    } else if (expr === 'surprised') {
+        ctx.fillStyle = C.coralDeep;
+        ctx.beginPath(); ctx.ellipse(0, 20, 3, 4, 0, 0, Math.PI*2); ctx.fill();
+    } else if (expr === 'shy') {
+        ctx.strokeStyle = C.coralDeep; ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(-3, 19); ctx.quadraticCurveTo(0, 21, 3, 19);
+        ctx.stroke();
+    }
+
+    // --- Blush ---
+    if (o.blush) {
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.filter = 'blur(2px)';
+        fCircle(ctx, -14, 15, 4.5, C.coral);
+        fCircle(ctx, 14, 15, 4.5, C.coral);
+        ctx.restore();
+    }
+
     ctx.restore();
 }
 
+// ==================== CHARACTER: CAT ====================
 function drawCat(ctx, x, y, s, o) {
     o = o || {};
     const expr = o.expression || 'enjoy';
+    const blink = o.blink || false;
     ctx.save();
     ctx.translate(x, y);
     ctx.scale(s, s);
-    const bd = '#D4A574', dk = C.darkBrown;
+    const bd = '#D4A574', bdD = '#B8896B', bdL = '#E8C098', dk = C.darkBrown;
 
-    // Tail
-    ctx.strokeStyle = bd; ctx.lineWidth = 8; ctx.lineCap = 'round';
+    // --- Shadow ---
+    drawShadow(ctx, 0, 28, 26, 5);
+
+    // --- Tail (curved, flowing) ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    ctx.strokeStyle = bd; ctx.lineWidth = 10; ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(20, 20);
-    ctx.quadraticCurveTo(40, 10, 35, -10);
+    ctx.moveTo(18, 18);
+    ctx.quadraticCurveTo(38, 8, 34, -16);
+    ctx.quadraticCurveTo(32, -24, 26, -22);
+    ctx.stroke();
+    // Tail stripes
+    ctx.strokeStyle = bdD; ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(26, 12); ctx.lineTo(30, 10);
+    ctx.moveTo(33, 2); ctx.lineTo(37, 0);
+    ctx.moveTo(35, -10); ctx.lineTo(38, -12);
+    ctx.stroke();
+    ctx.restore();
+
+    // --- Body ---
+    ctx.save();
+    ctx.filter = 'blur(0.5px)';
+    const bg = ctx.createLinearGradient(0, 0, 0, 40);
+    bg.addColorStop(0, bdL);
+    bg.addColorStop(1, bd);
+    ctx.fillStyle = bg;
+    ctx.beginPath();
+    ctx.ellipse(0, 18, 24, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Body stripes
+    ctx.strokeStyle = bdD; ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-12, 8); ctx.lineTo(-12, 16);
+    ctx.moveTo(0, 6); ctx.lineTo(0, 14);
+    ctx.moveTo(12, 8); ctx.lineTo(12, 16);
+    ctx.stroke();
+    ctx.restore();
+
+    // --- Front paws ---
+    ctx.fillStyle = bd;
+    ctx.beginPath(); ctx.ellipse(-10, 32, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(10, 32, 6, 4, 0, 0, Math.PI*2); ctx.fill();
+    // Paw lines
+    ctx.strokeStyle = bdD; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-12, 33); ctx.lineTo(-12, 35);
+    ctx.moveTo(-9, 33); ctx.lineTo(-9, 35);
+    ctx.moveTo(9, 33); ctx.lineTo(9, 35);
+    ctx.moveTo(12, 33); ctx.lineTo(12, 35);
     ctx.stroke();
 
-    // Body
-    ctx.fillStyle = bd;
+    // --- Head ---
+    ctx.save();
+    ctx.filter = 'blur(0.3px)';
+    const hg = ctx.createRadialGradient(0, -15, 5, 0, -10, 24);
+    hg.addColorStop(0, bdL);
+    hg.addColorStop(1, bd);
+    ctx.fillStyle = hg;
     ctx.beginPath();
-    ctx.ellipse(0, 20, 25, 22, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, -10, 22, 20, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
 
-    // Head
-    fCircle(ctx, 0, -10, 22, bd);
-
-    // Ears
+    // --- Ears ---
     ctx.fillStyle = bd;
     ctx.beginPath();
-    ctx.moveTo(-18, -22); ctx.lineTo(-12, -38); ctx.lineTo(-5, -25);
+    ctx.moveTo(-18, -20); ctx.lineTo(-14, -36); ctx.lineTo(-6, -22);
     ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(18, -22); ctx.lineTo(12, -38); ctx.lineTo(5, -25);
+    ctx.moveTo(18, -20); ctx.lineTo(14, -36); ctx.lineTo(6, -22);
     ctx.closePath(); ctx.fill();
-
     // Inner ears
-    ctx.fillStyle = '#FFB5A0';
+    ctx.fillStyle = C.rgba(C.coralLight, 0.7);
     ctx.beginPath();
-    ctx.moveTo(-15, -24); ctx.lineTo(-12, -33); ctx.lineTo(-8, -26);
+    ctx.moveTo(-15, -22); ctx.lineTo(-13, -31); ctx.lineTo(-9, -24);
     ctx.closePath(); ctx.fill();
     ctx.beginPath();
-    ctx.moveTo(15, -24); ctx.lineTo(12, -33); ctx.lineTo(8, -26);
+    ctx.moveTo(15, -22); ctx.lineTo(13, -31); ctx.lineTo(9, -24);
     ctx.closePath(); ctx.fill();
 
-    // Eyes
-    ctx.strokeStyle = dk; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-    if (expr === 'enjoy') {
-        ctx.beginPath(); ctx.arc(-8, -8, 5, 0.3, Math.PI - 0.3); ctx.stroke();
-        ctx.beginPath(); ctx.arc(8, -8, 5, 0.3, Math.PI - 0.3); ctx.stroke();
+    // --- Eyes ---
+    if (!blink) {
+        ctx.fillStyle = dk;
+        if (expr === 'enjoy') {
+            // Happy closed-curve eyes
+            ctx.strokeStyle = dk; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.arc(-8, -8, 5, 0.2, Math.PI - 0.2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(8, -8, 5, 0.2, Math.PI - 0.2); ctx.stroke();
+        } else if (expr === 'curious') {
+            // Wide round eyes
+            ctx.beginPath(); ctx.ellipse(-8, -8, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(8, -8, 4, 5, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = C.gold;
+            ctx.beginPath(); ctx.arc(-8, -7, 2, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(8, -7, 2, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = C.navy;
+            ctx.beginPath(); ctx.ellipse(-8, -7, 0.8, 3, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(8, -7, 0.8, 3, 0, 0, Math.PI*2); ctx.fill();
+        }
     } else {
-        fCircle(ctx, -8, -8, 3, dk);
-        fCircle(ctx, 8, -8, 3, dk);
-        fCircle(ctx, -7, -9, 1, C.white);
-        fCircle(ctx, 9, -9, 1, C.white);
+        ctx.strokeStyle = dk; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-12, -8); ctx.lineTo(-4, -8); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(4, -8); ctx.lineTo(12, -8); ctx.stroke();
     }
 
-    // Nose
+    // --- Nose ---
     ctx.fillStyle = C.coral;
     ctx.beginPath();
-    ctx.moveTo(-2, 0); ctx.lineTo(2, 0); ctx.lineTo(0, 3);
+    ctx.moveTo(-2.5, 0); ctx.lineTo(2.5, 0); ctx.lineTo(0, 3);
     ctx.closePath(); ctx.fill();
 
-    // Mouth
-    ctx.strokeStyle = dk; ctx.lineWidth = 1.5;
+    // --- Mouth (w shape) ---
+    ctx.strokeStyle = dk; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(0, 3); ctx.lineTo(0, 6);
-    ctx.moveTo(0, 6); ctx.arc(-3, 6, 3, 0, Math.PI * 0.5);
-    ctx.moveTo(0, 6); ctx.arc(3, 6, 3, Math.PI * 0.5, Math.PI);
+    ctx.moveTo(0, 6); ctx.quadraticCurveTo(-4, 9, -6, 6);
+    ctx.moveTo(0, 6); ctx.quadraticCurveTo(4, 9, 6, 6);
     ctx.stroke();
 
-    // Whiskers
-    ctx.lineWidth = 1;
+    // --- Whiskers ---
+    ctx.strokeStyle = C.rgba(dk, 0.5); ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(-10, 2); ctx.lineTo(-22, 0);
-    ctx.moveTo(-10, 4); ctx.lineTo(-22, 5);
-    ctx.moveTo(10, 2); ctx.lineTo(22, 0);
-    ctx.moveTo(10, 4); ctx.lineTo(22, 5);
+    ctx.moveTo(-10, 2); ctx.lineTo(-22, -1);
+    ctx.moveTo(-10, 4); ctx.lineTo(-22, 4);
+    ctx.moveTo(10, 2); ctx.lineTo(22, -1);
+    ctx.moveTo(10, 4); ctx.lineTo(22, 4);
     ctx.stroke();
 
-    // Stripes
-    ctx.strokeStyle = '#B8896B'; ctx.lineWidth = 2;
+    // --- Head stripes ---
+    ctx.strokeStyle = bdD; ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(-5, -28); ctx.lineTo(-5, -22);
-    ctx.moveTo(5, -28); ctx.lineTo(5, -22);
-    ctx.moveTo(0, -30); ctx.lineTo(0, -25);
+    ctx.moveTo(-6, -28); ctx.lineTo(-6, -22);
+    ctx.moveTo(6, -28); ctx.lineTo(6, -22);
+    ctx.moveTo(0, -30); ctx.lineTo(0, -24);
+    ctx.moveTo(-14, -18); ctx.lineTo(-14, -12);
+    ctx.moveTo(14, -18); ctx.lineTo(14, -12);
     ctx.stroke();
 
     ctx.restore();
+}
+
+// ==================== PARTICLE SYSTEM ====================
+class ParticleSystem {
+    constructor() { this.particles = []; }
+    spawn(x, y, type, count, opts) {
+        opts = opts || {};
+        for (let i = 0; i < count; i++) {
+            const p = {
+                x, y,
+                vx: opts.vx !== undefined ? opts.vx + U.rand(-opts.spread || 0, opts.spread || 0) : U.rand(-2, 2),
+                vy: opts.vy !== undefined ? opts.vy + U.rand(-opts.spread || 0, opts.spread || 0) : U.rand(-3, -0.5),
+                life: opts.life || U.rand(1, 2.5),
+                age: 0,
+                size: opts.size || U.rand(3, 8),
+                rot: U.rand(0, Math.PI * 2),
+                vrot: U.rand(-0.05, 0.05),
+                type,
+                color: opts.color || C.coral,
+                gravity: opts.gravity !== undefined ? opts.gravity : 0.05
+            };
+            this.particles.push(p);
+        }
+    }
+    update(dt) {
+        for (let i = this.particles.length - 1; i >= 0; i--) {
+            const p = this.particles[i];
+            p.age += dt;
+            if (p.age >= p.life) { this.particles.splice(i, 1); continue; }
+            p.x += p.vx * dt * 60;
+            p.y += p.vy * dt * 60;
+            p.vy += p.gravity * dt * 60;
+            p.rot += p.vrot * dt * 60;
+        }
+    }
+    render(ctx) {
+        for (const p of this.particles) {
+            const a = 1 - p.age / p.life;
+            ctx.save();
+            ctx.globalAlpha = a;
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rot);
+            if (p.type === 'heart') {
+                const sz = p.size * a;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.moveTo(0, sz * 0.3);
+                ctx.bezierCurveTo(-sz, -sz * 0.5, -sz * 0.5, -sz, 0, -sz * 0.3);
+                ctx.bezierCurveTo(sz * 0.5, -sz, sz, -sz * 0.5, 0, sz * 0.3);
+                ctx.fill();
+            } else if (p.type === 'petal') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.ellipse(0, 0, p.size * a, p.size * a * 1.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.type === 'star') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                for (let j = 0; j < 5; j++) {
+                    const ang = (j / 5) * Math.PI * 2 - Math.PI / 2;
+                    const r = j % 2 === 0 ? p.size * a : p.size * a * 0.4;
+                    const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+                    if (j === 0) ctx.moveTo(px, py);
+                    else ctx.lineTo(px, py);
+                }
+                ctx.closePath();
+                ctx.fill();
+            } else if (p.type === 'sparkle') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size * a, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(-p.size * a * 2, 0); ctx.lineTo(p.size * a * 2, 0);
+                ctx.moveTo(0, -p.size * a * 2); ctx.lineTo(0, p.size * a * 2);
+                ctx.stroke();
+            } else if (p.type === 'splash') {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size * a * 0.6, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (p.type === 'bubble') {
+                ctx.strokeStyle = p.color;
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.arc(0, 0, p.size * a, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+    clear() { this.particles = []; }
 }
 
 // ==================== BACKGROUND HELPERS ====================
 function makeStars(w, h, count, maxR) {
     const stars = [];
     for (let i = 0; i < count; i++) {
-        stars.push({
-            x: Math.random() * w,
-            y: Math.random() * h * 0.7,
-            r: Math.random() * (maxR || 2) + 0.5,
-            p: Math.random() * Math.PI * 2,
-            s: Math.random() * 2 + 1
-        });
+        stars.push({ x: Math.random() * w, y: Math.random() * h * 0.75, r: Math.random() * (maxR || 2) + 0.5, p: Math.random() * Math.PI * 2, s: Math.random() * 2 + 1 });
     }
     return stars;
 }
@@ -653,11 +921,9 @@ function drawStars(ctx, stars, t) {
     for (const s of stars) {
         const tw = Math.sin(t * s.s + s.p) * 0.5 + 0.5;
         ctx.fillStyle = `rgba(255,248,240,${tw * 0.9})`;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
         if (s.r > 1.5 && tw > 0.7) {
-            ctx.strokeStyle = `rgba(255,248,240,${(tw - 0.7) * 0.5})`;
+            ctx.strokeStyle = `rgba(255,248,240,${(tw - 0.7) * 0.4})`;
             ctx.lineWidth = 0.5;
             ctx.beginPath();
             ctx.moveTo(s.x - s.r * 3, s.y); ctx.lineTo(s.x + s.r * 3, s.y);
@@ -679,15 +945,82 @@ function drawRaindrops(ctx, drops, t) {
     }
 }
 
+// Watercolor sky gradient
+function drawSky(ctx, w, h, c1, c2, c3) {
+    const g = ctx.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, c1);
+    g.addColorStop(0.6, c2);
+    g.addColorStop(1, c3 || c2);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+}
+
+// Watercolor ground
+function drawGround(ctx, w, h, groundY, c1, c2) {
+    const g = ctx.createLinearGradient(0, groundY, 0, h);
+    g.addColorStop(0, c1);
+    g.addColorStop(1, c2);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, groundY, w, h - groundY);
+    // Soft edge
+    ctx.save();
+    ctx.globalAlpha = 0.3;
+    ctx.filter = 'blur(8px)';
+    ctx.fillStyle = c1;
+    ctx.fillRect(0, groundY - 5, w, 10);
+    ctx.restore();
+}
+
+// Watercolor tree (simple)
+function drawTree(ctx, x, y, s, leafColor, trunkColor) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    // Trunk
+    ctx.fillStyle = trunkColor || C.warmBrown;
+    ctx.fillRect(-4, 0, 8, 30);
+    // Leaves (watercolor blobs)
+    wcBlob(ctx, 0, -15, 30, 28, leafColor, { blur: 3, alpha: 0.5 });
+    wcBlob(ctx, -12, -5, 22, 20, leafColor, { blur: 3, alpha: 0.4 });
+    wcBlob(ctx, 12, -5, 22, 20, leafColor, { blur: 3, alpha: 0.4 });
+    ctx.restore();
+}
+
+// Watercolor cloud
+function drawCloud(ctx, x, y, s, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.filter = 'blur(3px)';
+    ctx.fillStyle = color || C.white;
+    ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-20, 5, 20, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(20, 5, 20, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-10, -10, 18, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(10, -10, 18, 0, Math.PI*2); ctx.fill();
+    ctx.restore();
+}
+
+// Draw a watercolor heart
+function drawHeart(ctx, x, y, s, color, alpha) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.globalAlpha = alpha || 1;
+    ctx.filter = 'blur(0.5px)';
+    ctx.fillStyle = color || C.coral;
+    ctx.beginPath();
+    ctx.moveTo(0, 8);
+    ctx.bezierCurveTo(-12, -4, -8, -14, 0, -6);
+    ctx.bezierCurveTo(8, -14, 12, -4, 0, 8);
+    ctx.fill();
+    ctx.restore();
+}
+
 // ==================== SCENE BASE CLASS ====================
 class Scene {
-    constructor(g) {
-        this.g = g;
-        this.done = false;
-        this.t = 0;
-        this.hint = '';
-        this.text = '';
-    }
+    constructor(g) { this.g = g; this.done = false; this.t = 0; this.hint = ''; this.text = ''; }
     enter() { this.t = 0; this.done = false; }
     exit() {}
     update(dt) { this.t += dt; }
@@ -697,887 +1030,875 @@ class Scene {
     onUp(x, y) {}
 }
 
-// ==================== SCENE 0: Envelope ====================
+// ==================== SCENE 0: Starry Night Opening ====================
 class S0 extends Scene {
-    constructor(g) { super(g); this.hint = '点击信封打开'; this.text = '你有一封未读信件 · 来自一个爱你的人'; }
-    enter() { super.enter(); this.state = 'closed'; this.openP = 0; this.stars = makeStars(this.g.w, this.g.h, 60, 2); }
+    enter() { super.enter(); this.text = ''; this.hint = '轻触星空，开启我们的故事'; this.stars = makeStars(this.g.w, this.g.h, 60, 2.5); this.envY = -100; this.opened = false; }
     update(dt) {
         super.update(dt);
-        if (this.state === 'opening') {
-            this.openP += dt * 1.5;
-            if (this.openP >= 1) {
-                this.openP = 1; this.state = 'opened';
-                const cx = this.g.w / 2, cy = this.g.h / 2;
-                this.g.ps.burstHearts(cx, cy, 25);
-                this.g.ps.burstStars(cx, cy, 20);
-                this.done = true;
-            }
-        }
+        this.envY = U.lerp(this.envY, this.g.h * 0.4, dt * 2);
+        if (this.opened && this.t > 1.5) this.done = true;
     }
     render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#1a1530'],[0.5,'#2e2348'],[1,'#3a2c5c']]));
-        drawStars(ctx, this.stars, this.t);
-        const cx = this.g.w / 2, cy = this.g.h / 2 + Math.sin(this.t * 1.5) * 10;
-        const ew = Math.min(140, this.g.w * 0.35), eh = ew * 0.65;
-        const gr = 80 + Math.sin(this.t * 2) * 10;
-        const gg = ctx.createRadialGradient(cx, cy, 0, cx, cy, gr);
-        gg.addColorStop(0, 'rgba(255,200,87,0.25)'); gg.addColorStop(1, 'rgba(255,200,87,0)');
-        ctx.fillStyle = gg; ctx.fillRect(cx - gr, cy - gr, gr * 2, gr * 2);
-        if (this.state !== 'opened') {
-            fRR(ctx, cx - ew/2, cy - eh/2, ew, eh, 8, C.cream);
-            const fa = this.state === 'opening' ? U.lerp(0, Math.PI * 0.7, this.openP) : 0;
-            ctx.save(); ctx.translate(cx, cy - eh/2); ctx.rotate(fa);
-            ctx.fillStyle = C.peach; ctx.beginPath();
-            ctx.moveTo(-ew/2, 0); ctx.lineTo(ew/2, 0); ctx.lineTo(0, eh * 0.5); ctx.closePath(); ctx.fill();
-            ctx.restore();
-            if (this.state === 'closed') { fCircle(ctx, cx, cy, 12, C.coral); fCircle(ctx, cx, cy, 8, C.coralLight); }
-            fHeart(ctx, cx, cy, 5, C.white);
-        }
-        if (this.openP > 0) {
-            const br = this.openP * 250;
-            const bg = ctx.createRadialGradient(cx, cy, 0, cx, cy, br);
-            bg.addColorStop(0, `rgba(255,248,240,${0.5 * this.openP})`);
-            bg.addColorStop(0.5, `rgba(255,200,87,${0.25 * this.openP})`);
-            bg.addColorStop(1, 'rgba(255,200,87,0)');
-            ctx.fillStyle = bg; ctx.fillRect(0, 0, this.g.w, this.g.h);
-        }
-    }
-    onDown(x, y) {
-        if (this.state === 'closed') {
-            if (U.dist(x, y, this.g.w/2, this.g.h/2) < 80) { this.state = 'opening'; this.g.music.play(); }
-        }
-    }
-}
-
-// ==================== SCENE 1: Door ====================
-class S1 extends Scene {
-    constructor(g) { super(g); this.hint = '向左滑动推开门'; this.text = '初次相遇 · 一眼万年'; }
-    enter() { super.enter(); this.state = 'closed'; this.doorOpen = 0; this.swiping = false; this.startX = 0; }
-    update(dt) {
-        super.update(dt);
-        if (this.state === 'closing') { this.doorOpen -= dt * 3; if (this.doorOpen <= 0) { this.doorOpen = 0; this.state = 'closed'; } }
-        if (this.state === 'opened' && !this.done) { this.done = true; }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#FFB5A0'],[0.5,'#FF8B7B'],[1,'#FFD4B8']]));
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        const dw = Math.min(160, this.g.w * 0.4), dh = dw * 1.6;
-        // Door frame
-        fRR(ctx, cx - dw/2 - 12, cy - dh/2 - 12, dw + 24, dh + 24, 6, C.warmBrown);
-        // Door opening (dark)
-        fRect(ctx, cx - dw/2, cy - dh/2, dw, dh, '#2a1a0a');
-        // Light from opening
-        if (this.doorOpen > 0) {
-            const lg = ctx.createLinearGradient(cx, cy, cx, cy);
-            ctx.save();
-            const rays = 8;
-            for (let i = 0; i < rays; i++) {
-                const a = (i / rays - 0.5) * Math.PI * 0.6;
-                const len = 200 * this.doorOpen;
-                ctx.fillStyle = `rgba(255,200,87,${0.15 * this.doorOpen})`;
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(cx + Math.cos(a - Math.PI/2) * len, cy + Math.sin(a - Math.PI/2) * len);
-                ctx.lineTo(cx + Math.cos(a + Math.PI/rays - Math.PI/2) * len, cy + Math.sin(a + Math.PI/rays - Math.PI/2) * len);
-                ctx.closePath(); ctx.fill();
-            }
-            ctx.restore();
-        }
-        // Door panel (swings open)
+        const w = this.g.w, h = this.g.h;
+        drawSky(ctx, w, h, C.navy, C.purple, C.purpleLight);
+        // Watercolor wash
+        wcWash(ctx, w * 0.3, h * 0.2, 200, C.lavender, 0.15);
+        wcWash(ctx, w * 0.7, h * 0.15, 180, C.lavenderDeep, 0.1);
+        drawStars(ctx, this.stars, U.T);
+        drawPaperTexture(ctx, w, h);
+        // Floating envelope
+        const cx = w / 2, cy = this.envY;
+        const float = Math.sin(this.t * 2) * 8;
         ctx.save();
-        ctx.translate(cx, cy);
-        const angle = this.doorOpen * Math.PI * 0.4;
-        ctx.transform(Math.cos(angle * 0.5), 0, 0, 1, -dw/2 * (1 - this.doorOpen), 0);
-        fRR(ctx, -dw/2, -dh/2, dw, dh, 4, C.warmBrown);
-        fRR(ctx, -dw/2 + 10, -dh/2 + 10, dw - 20, dh/3 - 5, 4, C.darkBrown);
-        fRR(ctx, -dw/2 + 10, -dh/2 + dh/3 + 5, dw - 20, dh/3 - 5, 4, C.darkBrown);
-        fRR(ctx, -dw/2 + 10, -dh/2 + dh*2/3 + 5, dw - 20, dh/3 - 15, 4, C.darkBrown);
-        fCircle(ctx, dw/2 - 15, 0, 5, C.honey);
-        ctx.restore();
-    }
-    onDown(x, y) { if (this.state === 'closed') { this.swiping = true; this.startX = x; } }
-    onMove(x, y) {
-        if (this.swiping && this.state === 'closed') {
-            const dx = x - this.startX;
-            this.doorOpen = U.clamp(-dx / 120, 0, 1);
-            if (this.doorOpen >= 1) {
-                this.state = 'opened'; this.swiping = false;
-                this.g.ps.burstStars(this.g.w/2, this.g.h/2, 25);
-                this.g.ps.spawn('gold', this.g.w/2, this.g.h/2, 15, {speed: 120, life: 2, size: 6});
-            }
-        }
-    }
-    onUp(x, y) { if (this.swiping && this.doorOpen < 1) { this.state = 'closing'; } this.swiping = false; }
-}
-
-// ==================== SCENE 2: Card Flip ====================
-class S2 extends Scene {
-    constructor(g) { super(g); this.hint = '点击翻开角色卡'; this.text = '剧本杀那晚 · 我心动了'; }
-    enter() { super.enter(); this.state = 'down'; this.flipP = 0; }
-    update(dt) {
-        super.update(dt);
-        if (this.state === 'flipping') {
-            this.flipP += dt * 2;
-            if (this.flipP >= 1) { this.flipP = 1; this.state = 'up'; this.g.ps.burstStars(this.g.w/2, this.g.h/2, 20); this.done = true; }
-        }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#3D2B2B'],[0.5,'#5C3D3D'],[1,'#3D2B2B']]));
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        const cw = Math.min(140, this.g.w * 0.35), ch = cw * 1.4;
-        ctx.save();
-        ctx.translate(cx, cy);
-        const p = this.state === 'down' ? 0 : this.flipP;
-        const sx = Math.abs(Math.cos(p * Math.PI));
-        ctx.scale(sx, 1);
-        if (p < 0.5) {
-            // Back of card
-            fRR(ctx, -cw/2, -ch/2, cw, ch, 10, C.darkBrown);
-            fRR(ctx, -cw/2 + 8, -ch/2 + 8, cw - 16, ch - 16, 6, C.warmBrown);
-            ctx.strokeStyle = C.honey; ctx.lineWidth = 1.5;
-            for (let i = -2; i <= 2; i++) { dLine(ctx, -cw/3, i * 20, cw/3, i * 20, C.honey, 1); }
-            fHeart(ctx, 0, 0, 12, C.coral);
-        } else {
-            // Front of card
-            fRR(ctx, -cw/2, -ch/2, cw, ch, 10, C.cream);
-            fRR(ctx, -cw/2 + 8, -ch/2 + 8, cw - 16, ch - 16, 6, C.warmWhite);
-            fHeart(ctx, 0, -10, 20, C.rose);
-            fText(ctx, '心动', 0, 30, '14px ' + FT, C.darkBrown, 'center', 'middle');
-        }
-        ctx.restore();
-        // Glow
-        if (p > 0.4) {
-            const gg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 120);
-            gg.addColorStop(0, `rgba(255,200,87,${(p - 0.4) * 0.4})`);
-            gg.addColorStop(1, 'rgba(255,200,87,0)');
-            ctx.fillStyle = gg; ctx.fillRect(0, 0, this.g.w, this.g.h);
-        }
-    }
-    onDown(x, y) {
-        if (this.state === 'down') {
-            const cx = this.g.w / 2, cy = this.g.h / 2;
-            const cw = Math.min(140, this.g.w * 0.35), ch = cw * 1.4;
-            if (Math.abs(x - cx) < cw/2 && Math.abs(y - cy) < ch/2) { this.state = 'flipping'; }
-        }
-    }
-}
-
-// ==================== SCENE 3: Phone Chat ====================
-class S3 extends Scene {
-    constructor(g) { super(g); this.hint = '长按输入框回复'; this.text = '除夕夜 · 你问我有没有女朋友'; }
-    enter() { super.enter(); this.state = 'waiting'; this.pressP = 0; this.pressing = false; this.replyP = 0; this.fireworks = []; this.fwT = 0; }
-    update(dt) {
-        super.update(dt);
-        if (this.pressing) { this.pressP += dt * 0.6; if (this.pressP >= 1) { this.pressP = 1; this.pressing = false; this.state = 'replied'; } }
-        if (this.state === 'replied') { this.replyP += dt * 1.5; if (this.replyP > 1) this.replyP = 1; if (this.replyP >= 1 && !this.done) { this.g.ps.burstHearts(this.g.w/2, this.g.h/2, 15); this.done = true; } }
-        this.fwT += dt;
-        if (this.fwT > 0.8) { this.fwT = 0; this.g.ps.firework(U.rand(this.g.w*0.2, this.g.w*0.8), U.rand(this.g.h*0.1, this.g.h*0.3)); }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#1a1530'],[1,'#2a2050']]));
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        // Distant fireworks
-        // Phone
-        const pw = Math.min(220, this.g.w * 0.6), ph = pw * 1.8;
-        fRR(ctx, cx - pw/2, cy - ph/2, pw, ph, 16, C.darkBrown);
-        fRR(ctx, cx - pw/2 + 6, cy - ph/2 + 6, pw - 12, ph - 12, 10, '#1a1530');
-        // Chat bubble (received)
-        const bw = pw * 0.65, bh = 36;
-        fRR(ctx, cx - pw/2 + 16, cy - ph/4, bw, bh, 10, C.coralLight);
-        fText(ctx, '你有女朋友吗？', cx - pw/2 + 26, cy - ph/4 + 22, '12px ' + FB, C.darkBrown, 'left', 'middle');
-        // Input box / progress
-        const iy = cy + ph/8;
-        fRR(ctx, cx - pw/2 + 16, iy, pw - 32, 32, 8, C.darkGray);
-        if (this.pressing || this.pressP > 0) {
-            fRR(ctx, cx - pw/2 + 16, iy, (pw - 32) * this.pressP, 32, 8, C.coral);
-        }
-        fText(ctx, this.pressing ? '正在回复...' : (this.state === 'replied' ? '' : '长按此处回复'), cx, iy + 20, '11px ' + FB, this.pressing ? C.cream : 'rgba(255,255,255,0.4)', 'center', 'middle');
-        // Reply bubble
-        if (this.state === 'replied') {
-            const rp = U.easeOut(U.clamp(this.replyP, 0, 1));
-            const rx = U.lerp(cx + pw/2, cx + pw/2 - bw - 16, rp);
-            fRR(ctx, rx, cy + ph/4 - 20, bw, bh, 10, C.honey);
-            fText(ctx, '没有，但我想有你 ♥', rx + 10, cy + ph/4 + 2, '11px ' + FB, C.darkBrown, 'left', 'middle');
-        }
-    }
-    onDown(x, y) {
-        if (this.state === 'waiting') {
-            const cx = this.g.w / 2, cy = this.g.h / 2;
-            const pw = Math.min(220, this.g.w * 0.6), ph = pw * 1.8;
-            const iy = cy + ph/8;
-            if (x > cx - pw/2 + 16 && x < cx + pw/2 - 16 && y > iy && y < iy + 32) { this.pressing = true; this.g.music.play(); }
-        }
-    }
-    onUp(x, y) { if (this.pressing && this.pressP < 1) { this.pressing = false; this.pressP = 0; } }
-}
-
-// ==================== SCENE 4: Hold Hands ====================
-class S4 extends Scene {
-    constructor(g) { super(g); this.hint = '拖动两只手牵到一起'; this.text = '春节返工 · 我们在一起了'; }
-    enter() { super.enter(); this.leftX = 0.18; this.rightX = 0.82; this.dragging = null; this.connected = false; }
-    update(dt) {
-        super.update(dt);
-        if (!this.connected && this.rightX - this.leftX < 0.08) {
-            this.connected = true;
-            this.leftX = 0.46; this.rightX = 0.54;
-            const cx = this.g.w / 2, cy = this.g.h / 2;
-            this.g.ps.burstHearts(cx, cy, 30);
-            this.done = true;
-        }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#FFD4B8'],[0.5,'#FFB5A0'],[1,'#FFC857']]));
-        const cy = this.g.h / 2;
-        const lx = this.leftX * this.g.w, rx = this.rightX * this.g.w;
-        // Left hand
-        this.drawHand(ctx, lx, cy, false);
-        // Right hand
-        this.drawHand(ctx, rx, cy, true);
-        // Connection
-        if (this.connected) {
-            const cx = (lx + rx) / 2;
-            const ps = 1 + Math.sin(this.t * 4) * 0.1;
-            fHeart(ctx, cx, cy - 20, 14 * ps, C.rose);
-        }
-    }
-    drawHand(ctx, x, y, flip) {
-        ctx.save();
-        ctx.translate(x, y);
-        if (flip) ctx.scale(-1, 1);
+        ctx.translate(cx, cy + float);
+        ctx.scale(1.5, 1.5);
+        // Envelope shadow
+        drawShadow(ctx, 0, 45, 35, 8);
+        // Body
+        fRR(ctx, -30, -20, 60, 42, 8, C.cream);
+        // Flap
         ctx.fillStyle = C.peach;
-        // Palm
-        fRR(ctx, -20, -12, 40, 24, 12, C.peach);
-        // Thumb
-        fRR(ctx, -22, -8, 12, 14, 6, C.peach);
-        // Fingers
-        for (let i = 0; i < 4; i++) {
-            fRR(ctx, -16 + i * 10, -20, 7, 12, 3, C.peach);
+        ctx.beginPath();
+        ctx.moveTo(-30, -20); ctx.lineTo(0, -2); ctx.lineTo(30, -20);
+        ctx.closePath(); ctx.fill();
+        // Seal
+        if (!this.opened) {
+            ctx.save();
+            ctx.filter = 'blur(1px)';
+            fCircle(ctx, 0, -10, 10, C.coral);
+            ctx.restore();
+            // Heart on seal
+            drawHeart(ctx, 0, -12, 0.8, C.cream, 0.9);
+        } else {
+            // Opened - sparkle burst
+            ctx.fillStyle = C.honey;
+            for (let i = 0; i < 8; i++) {
+                const a = i / 8 * Math.PI * 2;
+                const r = 30 + Math.sin(this.t * 3 + i) * 10;
+                ctx.globalAlpha = 0.6;
+                ctx.beginPath(); ctx.arc(Math.cos(a) * r, Math.sin(a) * r, 3, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = 1;
         }
         ctx.restore();
+        // Ambient particles
+        if (Math.random() < 0.05) this.g.ps.spawn(U.rand(0, w), U.rand(0, h * 0.6), 'star', 1, { size: 2, color: C.cream, vy: -0.2, life: 3, gravity: 0 });
     }
     onDown(x, y) {
-        const cy = this.g.h / 2;
-        const lx = this.leftX * this.g.w, rx = this.rightX * this.g.w;
-        if (!this.connected) {
-            if (U.dist(x, y, lx, cy) < 35) this.dragging = 'left';
-            else if (U.dist(x, y, rx, cy) < 35) this.dragging = 'right';
+        const cx = this.g.w / 2, cy = this.envY;
+        if (U.dist(x, y, cx, cy) < 60 && !this.opened) {
+            this.opened = true;
+            this.hint = '';
+            this.text = '一封信，开始了我们的故事';
+            this.g.ps.spawn(cx, cy, 'sparkle', 20, { size: 5, color: C.honey, spread: 3, life: 2, gravity: 0.02 });
+            this.g.ps.spawn(cx, cy, 'heart', 8, { size: 6, color: C.coral, spread: 2, life: 2.5, gravity: -0.03 });
         }
     }
-    onMove(x, y) {
-        if (this.dragging === 'left') this.leftX = U.clamp(x / this.g.w, 0.05, this.rightX - 0.08);
-        else if (this.dragging === 'right') this.rightX = U.clamp(x / this.g.w, this.leftX + 0.08, 0.95);
-    }
-    onUp(x, y) { this.dragging = null; }
 }
 
-// ==================== SCENE 5: Pet Cat ====================
-class S5 extends Scene {
-    constructor(g) { super(g); this.hint = '在猫咪身上滑动抚摸'; this.text = '仙姑 · 欢迎来到我们的家'; }
-    enter() { super.enter(); this.petCount = 0; this.swiping = false; this.startX = 0; this.startY = 0; this.swipeDist = 0; this.ripples = []; this.catBlink = false; this.lastPetT = 0; }
-    update(dt) {
-        super.update(dt);
-        if (this.petCount >= 3 && !this.done) { this.done = true; this.g.ps.burstHearts(this.g.w/2, this.g.h/2, 20); }
-        this.ripples = this.ripples.filter(r => { r.r += dt * 80; r.a -= dt * 1.5; return r.a > 0; });
-        if (this.t - this.lastPetT > 0.3) this.catBlink = false;
-    }
+// ==================== SCENE 1: First Meeting (Cafe) ====================
+class S1 extends Scene {
+    enter() { super.enter(); this.text = '那年冬天，咖啡馆里的初次相遇'; this.hint = '轻触两杯咖啡，连结我们的缘分'; this.cups = [{ x: 0, y: 0, connected: false }, { x: 0, y: 0, connected: false }]; this.connectT = 0; }
+    update(dt) { super.update(dt); const w = this.g.w, h = this.g.h; this.cups[0].x = w * 0.32; this.cups[0].y = h * 0.65; this.cups[1].x = w * 0.68; this.cups[1].y = h * 0.65; if (this.cups[0].connected && this.cups[1].connected && this.t > 1) this.done = true; }
     render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#FFF8F0'],[0.5,'#FFE4B5'],[1,'#FFD4B8']]));
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        // Ripples
-        for (const r of this.ripples) {
-            ctx.strokeStyle = `rgba(255,139,123,${r.a * 0.5})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
-        }
-        drawCat(ctx, cx, cy, Math.min(1.5, this.g.w / 250), { expression: this.catBlink ? 'enjoy' : 'curious' });
-    }
-    onDown(x, y) {
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        if (U.dist(x, y, cx, cy) < 60) { this.swiping = true; this.startX = x; this.startY = y; this.swipeDist = 0; }
-    }
-    onMove(x, y) {
-        if (this.swiping) {
-            const d = U.dist(x, y, this.startX, this.startY);
-            this.swipeDist += U.dist(x, y, this.lastX || x, this.lastY || y);
-            this.lastX = x; this.lastY = y;
-            if (this.swipeDist > 60 && this.t - this.lastPetT > 0.5) {
-                this.petCount++; this.catBlink = true; this.lastPetT = this.t;
-                this.ripples.push({ x: x, y: y, r: 5, a: 1 });
-                this.g.ps.burstHearts(x, y - 30, 5);
-                this.swipeDist = 0;
-            }
-        }
-    }
-    onUp(x, y) { this.swiping = false; this.swipeDist = 0; this.lastX = null; this.lastY = null; }
-}
-
-// ==================== SCENE 6: Surfing ====================
-class S6 extends Scene {
-    constructor(g) { super(g); this.hint = '左右滑动保持平衡'; this.text = '海南冲浪 · 最甜的时光'; }
-    enter() { super.enter(); this.balCount = 0; this.swiping = false; this.startX = 0; this.tilt = 0; this.tiltT = 0; this.lastDir = 0; }
-    update(dt) {
-        super.update(dt);
-        this.tiltT += dt;
-        if (this.tilt !== 0 && this.tiltT > 0.5) { this.tilt *= 0.9; }
-        if (this.balCount >= 3 && !this.done) { this.done = true; this.g.ps.burstHearts(this.g.w/2, this.g.h/2, 20); }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0,'#4A90D9'],[0.4,'#5BA3E8'],[1,'#2E86AB']]));
-        const cx = this.g.w / 2, cy = this.g.h * 0.55;
-        // Waves
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 2;
-        for (let j = 0; j < 3; j++) {
-            ctx.beginPath();
-            const wy = cy + 40 + j * 30;
-            for (let i = 0; i <= this.g.w; i += 10) {
-                const yy = wy + Math.sin(i * 0.02 + this.t * 2 + j) * 8;
-                if (i === 0) ctx.moveTo(i, yy); else ctx.lineTo(i, yy);
-            }
-            ctx.stroke();
-        }
-        // Surfboard
+        const w = this.g.w, h = this.g.h;
+        // Warm cafe interior
+        drawSky(ctx, w, h, C.peachDeep, C.honey, C.cream);
+        // Window light wash
+        wcWash(ctx, w * 0.5, h * 0.3, 300, C.honey, 0.15);
+        wcWash(ctx, w * 0.2, h * 0.4, 200, C.coral, 0.08);
+        drawPaperTexture(ctx, w, h);
+        // Floor
+        drawGround(ctx, w, h, h * 0.7, C.warmBrown, C.darkBrown);
+        // Window
         ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(this.tilt * 0.3);
-        ctx.fillStyle = C.honey;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 50, 8, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = C.warmBrown;
-        ctx.fillRect(-2, -3, 4, 6);
-        // Figure
-        drawBoy(ctx, 0, -30, 0.4, { expression: 'happy' });
+        ctx.fillStyle = C.rgba(C.cream, 0.3);
+        ctx.filter = 'blur(2px)';
+        fRect(ctx, w * 0.05, h * 0.1, w * 0.25, h * 0.5);
         ctx.restore();
-        // Balance indicator
+        // Hanging lights
         for (let i = 0; i < 3; i++) {
-            fCircle(ctx, cx - 30 + i * 30, 50, 8, i < this.balCount ? C.honey : 'rgba(255,255,255,0.2)');
+            const lx = w * (0.25 + i * 0.25);
+            const ly = h * 0.15;
+            ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, ly); ctx.stroke();
+            wcWash(ctx, lx, ly + 8, 40, C.honey, 0.3);
+            fCircle(ctx, lx, ly + 5, 8, C.honeyDeep);
         }
-    }
-    onDown(x, y) { this.swiping = true; this.startX = x; }
-    onMove(x, y) {
-        if (this.swiping) {
-            const dx = x - this.startX;
-            this.tilt = U.clamp(dx / 100, -1, 1);
-        }
-    }
-    onUp(x, y) {
-        if (this.swiping) {
-            const dx = x - this.startX;
-            const dir = dx > 40 ? 1 : (dx < -40 ? -1 : 0);
-            if (dir !== 0 && dir !== this.lastDir) {
-                this.balCount++;
-                this.lastDir = dir;
-                this.g.ps.burstSplash(this.g.w/2, this.g.h * 0.55, 15);
+        // Table
+        ctx.fillStyle = C.warmBrown;
+        fRR(ctx, w * 0.15, h * 0.68, w * 0.7, 12, 6, C.warmBrown);
+        // Coffee cups
+        for (let i = 0; i < 2; i++) {
+            const c = this.cups[i];
+            ctx.save();
+            const bob = Math.sin(this.t * 2 + i * Math.PI) * 2;
+            // Steam
+            ctx.strokeStyle = C.rgba(C.white, 0.15); ctx.lineWidth = 2;
+            ctx.filter = 'blur(2px)';
+            for (let s = 0; s < 3; s++) {
+                ctx.beginPath();
+                ctx.moveTo(c.x + (s - 1) * 4, c.y - 15 + bob);
+                ctx.quadraticCurveTo(c.x + (s - 1) * 4 + Math.sin(this.t * 3 + s) * 5, c.y - 30 + bob, c.x + (s - 1) * 4, c.y - 40 + bob);
+                ctx.stroke();
             }
-            this.swiping = false; this.tilt = 0; this.tiltT = 0;
+            ctx.restore();
+            // Cup
+            ctx.fillStyle = c.connected ? C.coral : C.cream;
+            fRR(ctx, c.x - 12, c.y - 15 + bob, 24, 22, 4, ctx.fillStyle);
+            // Handle
+            ctx.strokeStyle = ctx.fillStyle; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(c.x + 14, c.y - 4 + bob, 6, -Math.PI/2, Math.PI/2); ctx.stroke();
+            // Coffee
+            ctx.fillStyle = C.darkBrown;
+            fRR(ctx, c.x - 9, c.y - 12 + bob, 18, 4, 2, C.darkBrown);
+            // Glow when connected
+            if (c.connected) { wcWash(ctx, c.x, c.y, 30, C.coral, 0.2); }
         }
-    }
-}
-
-// ==================== SCENE 7: Hug ====================
-class S7 extends Scene {
-    constructor(g) { super(g); this.hint = '拖动男孩给女孩拥抱'; this.text = '不管怎样 · 有我在'; }
-    enter() { super.enter(); this.boyX = 0.75; this.girlX = 0.25; this.dragging = false; this.hugging = false; }
-    update(dt) {
-        super.update(dt);
-        if (!this.hugging && this.boyX - this.girlX < 0.12) {
-            this.hugging = true; this.boyX = this.girlX + 0.08;
-            this.g.ps.burstHearts(this.g.w / 2, this.g.h / 2, 30);
-            this.done = true;
-        }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#3D3D4A'], [0.5, '#4A4055'], [1, '#2D2D38']]));
-        const cy = this.g.h * 0.55;
-        const sc = Math.min(1, this.g.w / 220);
-        const gx = this.girlX * this.g.w, bx = this.boyX * this.g.w;
-        drawGirl(ctx, gx, cy, sc, { expression: this.hugging ? 'happy' : 'sad', blush: this.hugging });
-        drawBoy(ctx, bx, cy, sc, { expression: this.hugging ? 'happy' : 'sad', blush: this.hugging });
-        if (this.hugging) {
-            const cx = (gx + bx) / 2;
-            const ps = 1 + Math.sin(this.t * 4) * 0.15;
-            fHeart(ctx, cx, cy - 60, 14 * ps, C.coral);
-        }
-    }
-    onDown(x, y) {
-        if (!this.hugging) {
-            const bx = this.boyX * this.g.w, cy = this.g.h * 0.55;
-            if (U.dist(x, y, bx, cy) < 55) this.dragging = true;
-        }
-    }
-    onMove(x, y) { if (this.dragging) this.boyX = U.clamp(x / this.g.w, this.girlX + 0.08, 0.95); }
-    onUp(x, y) { this.dragging = false; }
-}
-
-// ==================== SCENE 8: Ring Light ====================
-class S8 extends Scene {
-    constructor(g) { super(g); this.hint = '点击点亮环形灯'; this.text = '你重新出发 · 我在身后'; }
-    enter() { super.enter(); this.lightLevel = 0; this.pulseT = 0; }
-    update(dt) {
-        super.update(dt);
-        this.pulseT += dt;
-        if (this.lightLevel >= 3 && !this.done) {
-            this.done = true;
-            this.g.ps.burstStars(this.g.w / 2, this.g.h / 2, 25);
-            this.g.ps.spawn('gold', this.g.w / 2, this.g.h / 2, 15, { speed: 100, life: 2, size: 6 });
-        }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#1a1530'], [1, '#2D2D38']]));
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        const r = Math.min(80, this.g.w * 0.2);
-        const lightness = this.lightLevel / 3;
-        if (lightness > 0) {
-            const pulse = 1 + Math.sin(this.pulseT * 3) * 0.1;
-            const rayR = r * 3 * lightness * pulse;
-            const gg = ctx.createRadialGradient(cx, cy, r, cx, cy, rayR);
-            gg.addColorStop(0, `rgba(255,248,240,${0.4 * lightness})`);
-            gg.addColorStop(1, 'rgba(255,248,240,0)');
-            ctx.fillStyle = gg;
-            ctx.fillRect(cx - rayR, cy - rayR, rayR * 2, rayR * 2);
-        }
-        const ringColors = ['#3D3D4A', '#FFD4B8', '#FFC857', '#FFF8F0'];
-        const rc = ringColors[Math.min(this.lightLevel, 3)];
-        sCircle(ctx, cx, cy, r, rc, 14);
-        if (lightness > 0) {
-            const ig = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-            ig.addColorStop(0, `rgba(255,248,240,${0.15 * lightness})`);
-            ig.addColorStop(1, `rgba(255,200,87,${0.05 * lightness})`);
-            ctx.fillStyle = ig;
+        // Connection line
+        if (this.cups[0].connected && this.cups[1].connected) {
+            const p = U.easeOut(U.clamp(this.t - 0.5, 0, 1));
+            ctx.save();
+            ctx.strokeStyle = C.rgba(C.coral, 0.4); ctx.lineWidth = 3;
+            ctx.filter = 'blur(1px)';
             ctx.beginPath();
-            ctx.arc(cx, cy, r - 8, 0, Math.PI * 2);
-            ctx.fill();
-        }
-        for (let i = 0; i < 3; i++) {
-            fCircle(ctx, cx - 24 + i * 24, cy + r + 30, 7, i < this.lightLevel ? C.honey : 'rgba(255,255,255,0.15)');
-        }
-    }
-    onDown(x, y) {
-        if (this.lightLevel < 3) {
-            const cx = this.g.w / 2, cy = this.g.h / 2;
-            const r = Math.min(80, this.g.w * 0.2);
-            if (U.dist(x, y, cx, cy) < r + 25) {
-                this.lightLevel++;
-                this.g.ps.burstStars(cx, cy, 8);
-            }
-        }
-    }
-}
-
-// ==================== SCENE 9: Mend Crack ====================
-class S9 extends Scene {
-    constructor(g) { super(g); this.hint = '沿裂痕滑动修补'; this.text = '我们也曾 · 差点走散'; }
-    enter() {
-        super.enter();
-        this.mendP = 0; this.lastIdx = -1;
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        const w = Math.min(220, this.g.w * 0.55);
-        this.path = [];
-        const n = 8;
-        for (let i = 0; i <= n; i++) {
-            this.path.push({
-                x: cx - w / 2 + (w / n) * i,
-                y: cy + (i % 2 === 0 ? -1 : 1) * U.rand(20, 45)
-            });
-        }
-        this.drops = [];
-        for (let i = 0; i < 40; i++) {
-            this.drops.push({ x: Math.random() * this.g.w, y: Math.random() * this.g.h, len: U.rand(10, 20), speed: U.rand(200, 400), maxY: this.g.h });
-        }
-    }
-    update(dt) {
-        super.update(dt);
-        if (this.mendP >= 1 && !this.done) {
-            this.done = true;
-            this.g.ps.burstGold(this.g.w / 2, this.g.h / 2, 30);
-        }
-    }
-    render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#2D2D38'], [0.5, '#3D3D4A'], [1, '#1a1530']]));
-        drawRaindrops(ctx, this.drops, this.t);
-        ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 3;
-        ctx.beginPath();
-        for (let i = 0; i < this.path.length; i++) {
-            const p = this.path[i];
-            if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-        }
-        ctx.stroke();
-        const mc = Math.floor(this.mendP * (this.path.length - 1));
-        if (mc > 0 || (this.mendP > 0 && mc === 0)) {
-            ctx.strokeStyle = C.gold; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
-            ctx.shadowColor = C.gold; ctx.shadowBlur = 10;
-            ctx.beginPath();
-            for (let i = 0; i <= mc && i < this.path.length; i++) {
-                const p = this.path[i];
-                if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
-            }
-            if (mc < this.path.length - 1) {
-                const frac = (this.mendP * (this.path.length - 1)) - mc;
-                const p = this.path[mc], nx = this.path[mc + 1];
-                ctx.lineTo(U.lerp(p.x, nx.x, frac), U.lerp(p.y, nx.y, frac));
-            }
+            ctx.moveTo(this.cups[0].x, this.cups[0].y - 4);
+            ctx.quadraticCurveTo(w / 2, h * 0.5, this.cups[1].x * p + this.cups[0].x * (1-p), this.cups[1].y - 4);
             ctx.stroke();
-            ctx.shadowBlur = 0;
+            ctx.restore();
         }
+        // Characters
+        const sc = Math.min(1.4, w / 280);
+        drawBoy(ctx, w * 0.32, h * 0.52, sc, { expression: 'shy', blush: true });
+        drawGirl(ctx, w * 0.68, h * 0.52, sc, { expression: 'shy', blush: true });
     }
     onDown(x, y) {
-        if (this.path.length > 0 && U.dist(x, y, this.path[0].x, this.path[0].y) < 50) this.lastIdx = 0;
-    }
-    onMove(x, y) {
-        if (this.lastIdx >= 0) {
-            for (let i = this.lastIdx + 1; i < this.path.length; i++) {
-                if (U.dist(x, y, this.path[i].x, this.path[i].y) < 50) {
-                    this.lastIdx = i;
-                    this.mendP = i / (this.path.length - 1);
-                    this.g.ps.burstGold(this.path[i].x, this.path[i].y, 4);
-                    break;
+        for (const c of this.cups) {
+            if (!c.connected && U.dist(x, y, c.x, c.y) < 25) {
+                c.connected = true;
+                this.g.ps.spawn(c.x, c.y, 'heart', 6, { size: 4, color: C.coral, spread: 1.5, life: 1.5, gravity: -0.05 });
+                if (this.cups[0].connected && this.cups[1].connected) {
+                    this.hint = ''; this.text = '缘分就这样开始了...';
+                    this.t = 0;
                 }
             }
         }
     }
-    onUp(x, y) { this.lastIdx = -1; }
 }
 
-// ==================== SCENE 10: Reconcile ====================
-class S10 extends Scene {
-    constructor(g) { super(g); this.hint = '拖动两人转向彼此'; this.text = '但我们 · 选择了彼此'; }
-    enter() { super.enter(); this.turn1 = 0; this.turn2 = 0; this.dragging = null; this.facing = false; this.lastX = 0; this.lastY = 0; }
+// ==================== SCENE 2: Murder Mystery (Heartbeat) ====================
+class S2 extends Scene {
+    enter() { super.enter(); this.text = '剧本杀的夜晚，心跳的声音藏不住了'; this.hint = '轻触那颗跳动的心'; this.heartScale = 1; this.beatT = 0; this.taps = 0; }
     update(dt) {
         super.update(dt);
-        if (!this.facing && this.turn1 >= 1 && this.turn2 >= 1) {
-            this.facing = true;
-            this.g.ps.burstHearts(this.g.w / 2, this.g.h / 2, 30);
-            this.done = true;
-        }
+        this.beatT += dt;
+        const beat = Math.sin(this.beatT * 4);
+        this.heartScale = 1 + beat * 0.15;
+        if (this.taps >= 3 && this.t > 1) this.done = true;
     }
     render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#FF8B7B'], [0.5, '#FFC857'], [1, '#FFB5A0']]));
-        const cx = this.g.w / 2, cy = this.g.h * 0.55;
-        const sep = Math.min(120, this.g.w * 0.25);
-        const sc = Math.min(0.8, this.g.w / 280);
+        const w = this.g.w, h = this.g.h;
+        // Dim dramatic atmosphere
+        drawSky(ctx, w, h, C.navy, C.purple, C.purpleLight);
+        wcWash(ctx, w * 0.5, h * 0.4, 250, C.coral, 0.12);
+        wcWash(ctx, w * 0.2, h * 0.3, 150, C.lavender, 0.1);
+        drawPaperTexture(ctx, w, h);
+        // Table with game pieces
+        drawGround(ctx, w, h, h * 0.72, C.purpleLight, C.navy);
+        // Game cards on table
         ctx.save();
-        ctx.translate(cx - sep, cy);
-        ctx.rotate(U.lerp(-0.4, 0, this.turn2));
-        drawGirl(ctx, 0, 0, sc, { expression: this.facing ? 'happy' : 'sad', blush: this.facing });
-        ctx.restore();
-        ctx.save();
-        ctx.translate(cx + sep, cy);
-        ctx.rotate(U.lerp(0.4, 0, this.turn1));
-        drawBoy(ctx, 0, 0, sc, { expression: this.facing ? 'happy' : 'sad', blush: this.facing });
-        ctx.restore();
-        if (this.facing) {
-            const ps = 1 + Math.sin(this.t * 4) * 0.15;
-            fHeart(ctx, cx, cy - 70, 16 * ps, C.rose);
+        ctx.fillStyle = C.rgba(C.cream, 0.15);
+        for (let i = 0; i < 5; i++) {
+            ctx.save();
+            ctx.translate(w * (0.2 + i * 0.15), h * 0.78);
+            ctx.rotate(U.rand(-0.2, 0.2));
+            fRR(ctx, -15, -20, 30, 40, 3, C.rgba(C.cream, 0.15));
+            ctx.restore();
         }
+        ctx.restore();
+        // Heartbeat glow
+        const hx = w / 2, hy = h * 0.42;
+        wcWash(ctx, hx, hy, 80 * this.heartScale, C.coral, 0.25);
+        // Pulsing heart
+        ctx.save();
+        ctx.translate(hx, hy);
+        ctx.scale(this.heartScale, this.heartScale);
+        drawHeart(ctx, 0, 0, 1.5, C.coral, 0.8);
+        // Inner glow
+        drawHeart(ctx, 0, 0, 0.9, C.honey, 0.5);
+        ctx.restore();
+        // Characters
+        const sc = Math.min(1.4, w / 280);
+        drawBoy(ctx, w * 0.3, h * 0.52, sc, { expression: 'shy', blush: true });
+        drawGirl(ctx, w * 0.7, h * 0.52, sc, { expression: 'happy', blush: true });
     }
     onDown(x, y) {
-        if (!this.facing) {
-            const cx = this.g.w / 2, cy = this.g.h * 0.55;
-            const sep = Math.min(120, this.g.w * 0.25);
-            if (U.dist(x, y, cx + sep, cy) < 55) { this.dragging = 'boy'; this.lastX = x; this.lastY = y; }
-            else if (U.dist(x, y, cx - sep, cy) < 55) { this.dragging = 'girl'; this.lastX = x; this.lastY = y; }
+        const hx = this.g.w / 2, hy = this.g.h * 0.42;
+        if (U.dist(x, y, hx, hy) < 50) {
+            this.taps++;
+            this.g.ps.spawn(x, y, 'heart', 10, { size: 5, color: C.coral, spread: 2.5, life: 2, gravity: -0.05 });
+            this.g.ps.spawn(x, y, 'sparkle', 5, { size: 4, color: C.honey, spread: 2, life: 1.5, gravity: 0 });
+            if (this.taps >= 3) { this.hint = ''; this.text = '心动，是藏不住的秘密'; this.t = 0; }
+        }
+    }
+}
+
+// ==================== SCENE 3: New Year Chat ====================
+class S3 extends Scene {
+    enter() { super.enter(); this.text = '除夕夜，屏幕那头的你问我有没有女朋友'; this.hint = '轻触消息气泡'; this.bubbles = []; this.tapped = 0; this.maxTaps = 4; this.genBubble(); }
+    genBubble() {
+        const msgs = ['在吗？', '有没有女朋友？', '...其实', '我也喜欢你'];
+        if (this.bubbles.length < msgs.length) {
+            this.bubbles.push({ x: U.rand(this.g.w * 0.15, this.g.w * 0.85), y: -40, text: msgs[this.bubbles.length], vy: 0, tapped: false, life: 0 });
+        }
+    }
+    update(dt) {
+        super.update(dt);
+        if (this.t > (this.bubbles.length * 0.8) && this.bubbles.length < 4) this.genBubble();
+        for (const b of this.bubbles) {
+            b.life += dt;
+            b.y = U.lerp(b.y, this.g.h * (0.25 + this.bubbles.indexOf(b) * 0.12), dt * 2);
+        }
+        if (this.tapped >= this.maxTaps && this.t > 1) this.done = true;
+    }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Night scene
+        drawSky(ctx, w, h, C.navy, C.navyLight, C.purple);
+        // Phone glow
+        wcWash(ctx, w / 2, h * 0.5, 200, C.sky, 0.15);
+        drawPaperTexture(ctx, w, h);
+        // Stars
+        if (!this.stars) this.stars = makeStars(w, h, 40, 1.5);
+        drawStars(ctx, this.stars, U.T);
+        // Fireworks
+        const fwT = (U.T * 0.5) % 3;
+        if (fwT < 0.1) {
+            this.g.ps.spawn(U.rand(w * 0.2, w * 0.8), U.rand(h * 0.1, h * 0.3), 'sparkle', 15, { size: 4, color: U.rand(0,1) > 0.5 ? C.honey : C.coral, spread: 3, life: 1.5, gravity: 0.05 });
+        }
+        // Chat bubbles
+        for (const b of this.bubbles) {
+            const alpha = U.clamp(b.life * 2, 0, 1);
+            ctx.save();
+            ctx.globalAlpha = b.tapped ? alpha * 0.4 : alpha;
+            // Bubble
+            ctx.fillStyle = b.tapped ? C.rgba(C.gray, 0.3) : C.rgba(C.cream, 0.8);
+            ctx.filter = 'blur(0.5px)';
+            const tw = ctx.measureText(b.text).width;
+            fRR(ctx, b.x - 50, b.y - 18, 100, 36, 12, ctx.fillStyle);
+            ctx.restore();
+            // Text
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = b.tapped ? C.gray : C.darkBrown;
+            ctx.font = `14px ${FB}`;
+            ctx.textAlign = 'center';
+            ctx.fillText(b.text, b.x, b.y + 2);
+            ctx.restore();
+        }
+        // Phone
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+        fRR(ctx, w/2 - 40, h * 0.7, 80, 14, 4, C.darkBrown);
+        ctx.restore();
+        // Characters
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.5, h * 0.62, sc, { expression: 'surprised', blush: true });
+    }
+    onDown(x, y) {
+        for (const b of this.bubbles) {
+            if (!b.tapped && U.dist(x, y, b.x, b.y) < 50) {
+                b.tapped = true;
+                this.tapped++;
+                this.g.ps.spawn(b.x, b.y, 'sparkle', 6, { size: 3, color: C.honey, spread: 1.5, life: 1, gravity: 0 });
+                if (this.tapped >= this.maxTaps) { this.hint = ''; this.text = '新年的钟声里，一切都有了答案'; this.t = 0; }
+            }
+        }
+    }
+}
+
+// ==================== SCENE 4: Confirm Relationship (Spring) ====================
+class S4 extends Scene {
+    enter() { super.enter(); this.text = '春暖花开，我们正式在一起了'; this.hint = '拖动花瓣，拼出一颗心'; this.petals = []; this.target = { x: 0, y: 0 }; this.placed = 0; this.maxPetals = 5; this.dragPetal = null; }
+    update(dt) {
+        super.update(dt);
+        this.target.x = this.g.w / 2; this.target.y = this.g.h * 0.42;
+        // Spawn ambient petals
+        if (Math.random() < 0.03) {
+            this.petals.push({ x: U.rand(0, this.g.w), y: -20, vx: U.rand(-0.5, 0.5), vy: U.rand(0.5, 1.5), rot: 0, vrot: U.rand(-0.02, 0.02), placed: false, size: U.rand(8, 14) });
+        }
+        for (const p of this.petals) {
+            if (!p.placed) {
+                p.x += p.vx * 60 * dt; p.y += p.vy * 60 * dt; p.rot += p.vrot * 60 * dt;
+                if (p.y > this.g.h + 20) p.y = -20;
+            }
+        }
+        if (this.placed >= this.maxPetals && this.t > 1.5) this.done = true;
+    }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Spring sky
+        drawSky(ctx, w, h, C.skyLight, C.sky, C.mint);
+        wcWash(ctx, w * 0.3, h * 0.2, 200, C.sakura, 0.12);
+        wcWash(ctx, w * 0.7, h * 0.25, 180, C.honey, 0.08);
+        drawPaperTexture(ctx, w, h);
+        // Ground (grass)
+        drawGround(ctx, w, h, h * 0.75, C.mint, C.mintDeep);
+        // Cherry blossom trees
+        drawTree(ctx, w * 0.15, h * 0.6, 1.5, C.sakura);
+        drawTree(ctx, w * 0.85, h * 0.6, 1.5, C.sakura);
+        // Target heart outline
+        if (this.placed < this.maxPetals) {
+            ctx.save();
+            ctx.globalAlpha = 0.2;
+            drawHeart(ctx, this.target.x, this.target.y, 2, C.sakuraDeep, 0.3);
+            ctx.restore();
+        }
+        // Placed petals forming heart
+        for (let i = 0; i < this.placed; i++) {
+            const angle = (i / this.maxPetals) * Math.PI * 2 - Math.PI/2;
+            const r = 30;
+            drawHeart(ctx, this.target.x + Math.cos(angle) * r, this.target.y + Math.sin(angle) * r, 0.6, C.sakuraDeep, 0.8);
+        }
+        // Falling petals
+        for (const p of this.petals) {
+            if (!p.placed) {
+                ctx.save();
+                ctx.translate(p.x, p.y);
+                ctx.rotate(p.rot);
+                ctx.fillStyle = C.sakura;
+                ctx.beginPath(); ctx.ellipse(0, 0, p.size * 0.6, p.size, 0, 0, Math.PI*2); ctx.fill();
+                ctx.restore();
+            }
+        }
+        // Characters
+        const sc = Math.min(1.4, w / 280);
+        drawBoy(ctx, w * 0.35, h * 0.58, sc, { expression: 'happy', blush: true });
+        drawGirl(ctx, w * 0.65, h * 0.58, sc, { expression: 'happy', blush: true });
+    }
+    onDown(x, y) {
+        for (const p of this.petals) {
+            if (!p.placed && U.dist(x, y, p.x, p.y) < 25) { this.dragPetal = p; break; }
         }
     }
     onMove(x, y) {
-        if (this.dragging) {
-            const d = U.dist(x, y, this.lastX, this.lastY);
-            if (this.dragging === 'boy') this.turn1 = U.clamp(this.turn1 + d * 0.008, 0, 1);
-            else this.turn2 = U.clamp(this.turn2 + d * 0.008, 0, 1);
-            this.lastX = x; this.lastY = y;
+        if (this.dragPetal) { this.dragPetal.x = x; this.dragPetal.y = y; }
+    }
+    onUp(x, y) {
+        if (this.dragPetal) {
+            if (U.dist(x, y, this.target.x, this.target.y) < 60) {
+                this.dragPetal.placed = true;
+                this.placed++;
+                this.g.ps.spawn(this.target.x, this.target.y, 'heart', 5, { size: 4, color: C.sakura, spread: 2, life: 1.5, gravity: -0.03 });
+                if (this.placed >= this.maxPetals) { this.hint = ''; this.text = '从今天起，你是我的了'; this.t = 0; }
+            }
+            this.dragPetal = null;
         }
     }
-    onUp(x, y) { this.dragging = null; }
 }
 
-// ==================== SCENE 11: Turn Key ====================
-class S11 extends Scene {
-    constructor(g) { super(g); this.hint = '画圆弧转动钥匙'; this.text = '不管多晚回家 · 你和仙姑都在等我'; }
-    enter() {
-        super.enter();
-        this.keyAngle = 0; this.dragging = false; this.lastA = 0;
-        this.stars = makeStars(this.g.w, this.g.h, 50, 2);
-    }
-    update(dt) {
-        super.update(dt);
-        if (this.keyAngle >= Math.PI * 2 && !this.done) {
-            this.done = true;
-            this.g.ps.spawn('gold', this.g.w / 2, this.g.h / 2, 20, { speed: 80, life: 2, size: 6 });
-            this.g.ps.burstHearts(this.g.w / 2, this.g.h / 2, 15);
-        }
-    }
+// ==================== SCENE 5: Honeymoon (Beach) ====================
+class S5 extends Scene {
+    enter() { super.enter(); this.text = '海南的阳光和海浪，蜜月真好'; this.hint = '轻触海浪，听海的声音'; this.waveT = 0; this.taps = 0; this.maxTaps = 5; }
+    update(dt) { super.update(dt); this.waveT += dt; if (this.taps >= this.maxTaps && this.t > 1.5) this.done = true; }
     render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#1a1530'], [1, '#2a2050']]));
-        drawStars(ctx, this.stars, this.t);
-        const cx = this.g.w / 2, cy = this.g.h / 2;
-        // Window
-        const ww = Math.min(100, this.g.w * 0.25), wh = ww * 0.7;
-        fRR(ctx, cx - ww / 2 - 6, cy - 110, ww + 12, wh + 12, 6, C.warmBrown);
-        const wg = ctx.createLinearGradient(cx, cy - 110, cx, cy - 110 + wh);
-        wg.addColorStop(0, 'rgba(255,200,87,0.6)');
-        wg.addColorStop(1, 'rgba(255,139,123,0.3)');
-        fRR(ctx, cx - ww / 2, cy - 104, ww, wh, 4, wg);
-        // Cat silhouette in window
-        drawCat(ctx, cx, cy - 90, 0.25, { expression: 'enjoy' });
-        // Door
-        const dw = Math.min(120, this.g.w * 0.3), dh = dw * 1.6;
-        fRR(ctx, cx - dw / 2, cy - dh / 2 + 30, dw, dh, 4, C.warmBrown);
-        fRR(ctx, cx - dw / 2 + 8, cy - dh / 2 + 38, dw - 16, dh / 3 - 8, 4, C.darkBrown);
-        fRR(ctx, cx - dw / 2 + 8, cy - dh / 2 + 38 + dh / 3, dw - 16, dh / 3 - 8, 4, C.darkBrown);
-        // Keyhole
-        const ky = cy + 10;
-        fCircle(ctx, cx, ky, 8, '#1a0a00');
-        fRect(ctx, cx - 3, ky, 6, 16, '#1a0a00');
-        // Key
-        if (this.keyAngle < Math.PI * 2) {
-            ctx.save();
-            ctx.translate(cx, ky);
-            ctx.rotate(this.keyAngle);
-            fCircle(ctx, 0, -16, 9, C.gold);
-            sCircle(ctx, 0, -16, 4, '#8B6F5C', 2);
-            fRect(ctx, -2, -10, 4, 22, C.gold);
-            fRect(ctx, 2, 6, 6, 4, C.gold);
-            fRect(ctx, 2, 12, 4, 4, C.gold);
-            ctx.restore();
-        }
-        // Glow when unlocked
-        if (this.keyAngle >= Math.PI * 2) {
-            const pulse = 1 + Math.sin(this.t * 3) * 0.1;
-            const gg = ctx.createRadialGradient(cx, cy, 0, cx, cy, 160 * pulse);
-            gg.addColorStop(0, 'rgba(255,200,87,0.25)');
-            gg.addColorStop(1, 'rgba(255,200,87,0)');
-            ctx.fillStyle = gg;
-            ctx.fillRect(0, 0, this.g.w, this.g.h);
-        }
-        // Progress arc
-        if (this.keyAngle > 0 && this.keyAngle < Math.PI * 2) {
-            ctx.strokeStyle = C.gold; ctx.lineWidth = 3;
+        const w = this.g.w, h = this.g.h;
+        // Tropical sky
+        drawSky(ctx, w, h, C.skyLight, C.sky, C.sand);
+        wcWash(ctx, w * 0.7, h * 0.15, 150, C.honey, 0.2);
+        // Sun
+        const sx = w * 0.75, sy = h * 0.2;
+        wcWash(ctx, sx, sy, 80, C.honey, 0.3);
+        fCircle(ctx, sx, sy, 30, C.honeyDeep);
+        // Ocean
+        const oceanY = h * 0.45;
+        drawSky(ctx, w, h, C.sky, C.oceanLight, C.ocean);
+        ctx.fillStyle = C.ocean;
+        ctx.fillRect(0, oceanY, w, h * 0.25);
+        // Wave animation
+        ctx.strokeStyle = C.rgba(C.white, 0.3); ctx.lineWidth = 2;
+        for (let layer = 0; layer < 3; layer++) {
             ctx.beginPath();
-            ctx.arc(cx, ky, 25, -Math.PI / 2, -Math.PI / 2 + this.keyAngle);
+            for (let x = 0; x <= w; x += 5) {
+                const wy = oceanY + 10 + layer * 15 + Math.sin(x * 0.02 + this.waveT * 2 + layer) * 6;
+                if (x === 0) ctx.moveTo(x, wy);
+                else ctx.lineTo(x, wy);
+            }
             ctx.stroke();
         }
+        // Beach
+        drawGround(ctx, w, h, h * 0.7, C.sand, C.sandDeep);
+        drawPaperTexture(ctx, w, h);
+        // Palm tree
+        ctx.save();
+        ctx.translate(w * 0.1, h * 0.7);
+        ctx.fillStyle = C.warmBrown;
+        ctx.beginPath();
+        ctx.moveTo(-3, 0); ctx.quadraticCurveTo(-15, -40, -8, -80); ctx.lineTo(0, -80); ctx.quadraticCurveTo(-5, -40, 3, 0);
+        ctx.fill();
+        // Leaves
+        for (let i = 0; i < 5; i++) {
+            const la = (i / 5) * Math.PI - Math.PI/2;
+            ctx.save();
+            ctx.translate(0, -80);
+            ctx.rotate(la);
+            ctx.fillStyle = C.leaf;
+            ctx.beginPath();
+            ctx.ellipse(20, 0, 25, 8, 0, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        }
+        ctx.restore();
+        // Characters with surfboards
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.3, h * 0.58, sc, { expression: 'happy', blush: true });
+        drawGirl(ctx, w * 0.7, h * 0.58, sc, { expression: 'happy', blush: true });
+        // Surfboard
+        ctx.save();
+        ctx.fillStyle = C.coral;
+        ctx.filter = 'blur(0.5px)';
+        fRR(ctx, w * 0.4, h * 0.66, w * 0.2, 6, 3, C.coral);
+        ctx.restore();
     }
     onDown(x, y) {
-        const cx = this.g.w / 2, ky = this.g.h / 2 + 10;
-        if (U.dist(x, y, cx, ky) < 35) {
-            this.dragging = true;
-            this.lastA = U.angle(cx, ky, x, y);
+        const oceanY = this.g.h * 0.45;
+        if (y > oceanY && y < this.g.h * 0.7) {
+            this.taps++;
+            this.g.ps.spawn(x, y, 'splash', 8, { size: 4, color: C.oceanLight, spread: 2.5, life: 1, gravity: 0.1, vy: -2 });
+            if (this.taps >= this.maxTaps) { this.hint = ''; this.text = '和你在一起的每一天都是蜜月'; this.t = 0; }
         }
     }
-    onMove(x, y) {
-        if (this.dragging) {
-            const cx = this.g.w / 2, ky = this.g.h / 2 + 10;
-            const a = U.angle(cx, ky, x, y);
-            let delta = a - this.lastA;
-            if (delta > Math.PI) delta -= Math.PI * 2;
-            if (delta < -Math.PI) delta += Math.PI * 2;
-            if (delta > 0) this.keyAngle += delta;
-            this.lastA = a;
-        }
-    }
-    onUp(x, y) { this.dragging = false; }
 }
 
-// ==================== SCENE 12: Final Confession ====================
-class S12 extends Scene {
-    constructor(g) { super(g); this.hint = ''; this.text = '从相识到此刻'; }
-    enter() {
-        super.enter();
-        this.phase = 0; this.phaseT = 0;
-        this.celebrating = false; this.celebT = 0;
-        this.stars = makeStars(this.g.w, this.g.h, 80, 2.5);
-        this.btnP = false;
-    }
+// ==================== SCENE 6: Cat Home ====================
+class S6 extends Scene {
+    enter() { super.enter(); this.text = '家里多了个小家伙，日子更热闹了'; this.hint = '轻轻抚摸小猫'; this.petT = 0; this.catX = 0; this.catY = 0; this.petting = false; this.petProgress = 0; }
     update(dt) {
         super.update(dt);
-        this.phaseT += dt;
-        if (this.phase === 0 && this.phaseT > 2.5) { this.phase = 1; this.phaseT = 0; this.g.setSceneText('谢谢你陪我走过每一步'); }
-        else if (this.phase === 1 && this.phaseT > 2.5) { this.phase = 2; this.phaseT = 0; this.g.setSceneText('这些日子，谢谢你。以后的路，你还愿意陪我走下去吗？'); }
-        else if (this.phase === 2 && this.phaseT > 3.5) { this.phase = 3; this.phaseT = 0; this.g.setHint('点击下方按钮'); }
-        if (this.celebrating) {
-            this.celebT += dt;
-            if (this.celebT > 0.4 && this.celebT < 6) {
-                if (Math.random() < 0.35) this.g.ps.firework(U.rand(this.g.w * 0.1, this.g.w * 0.9), U.rand(this.g.h * 0.1, this.g.h * 0.4));
+        this.catX = this.g.w * 0.5; this.catY = this.g.h * 0.6;
+        if (this.petting) { this.petProgress += dt * 0.5; this.petT += dt; if (this.petProgress >= 1 && this.t > 1) this.done = true; }
+        this.catBlink = Math.sin(this.t * 0.5) > 0.95;
+    }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Cozy interior
+        drawSky(ctx, w, h, C.peachDeep, C.honey, C.cream);
+        wcWash(ctx, w * 0.5, h * 0.3, 300, C.honey, 0.12);
+        wcWash(ctx, w * 0.2, h * 0.4, 150, C.coral, 0.08);
+        drawPaperTexture(ctx, w, h);
+        drawGround(ctx, w, h, h * 0.72, C.warmBrown, C.darkBrown);
+        // Cat tree
+        ctx.save();
+        ctx.fillStyle = C.warmBrown;
+        fRR(ctx, w * 0.8 - 5, h * 0.4, 10, h * 0.32, 3, C.warmBrown);
+        fCircle(ctx, w * 0.8, h * 0.4, 18, C.warmBrown);
+        ctx.restore();
+        // Window
+        ctx.save();
+        ctx.fillStyle = C.rgba(C.skyLight, 0.3);
+        ctx.filter = 'blur(2px)';
+        fRR(ctx, w * 0.1, h * 0.1, w * 0.2, h * 0.3, 10, C.rgba(C.skyLight, 0.3));
+        ctx.restore();
+        // Cat with pet feedback
+        const purr = this.petting ? Math.sin(this.petT * 10) * 2 : 0;
+        drawCat(ctx, this.catX, this.catY + purr, 1.8, { expression: this.petting ? 'enjoy' : 'curious', blink: this.catBlink });
+        // Pet progress
+        if (this.petting) {
+            ctx.save();
+            ctx.strokeStyle = C.coral; ctx.lineWidth = 4; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.arc(this.catX, this.catY - 50, 30, -Math.PI/2, -Math.PI/2 + this.petProgress * Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+            // Hearts from cat
+            if (Math.random() < 0.1) this.g.ps.spawn(this.catX + U.rand(-20, 20), this.catY - 30, 'heart', 1, { size: 4, color: C.coral, vy: -1.5, life: 2, gravity: 0 });
+        }
+        // Characters
+        const sc = Math.min(1.2, w / 320);
+        drawBoy(ctx, w * 0.2, h * 0.55, sc, { expression: 'happy' });
+        drawGirl(ctx, w * 0.8, h * 0.55, sc, { expression: 'happy', blush: true });
+    }
+    onDown(x, y) {
+        if (U.dist(x, y, this.catX, this.catY) < 40) {
+            this.petting = true; this.petT = 0;
+            this.g.ps.spawn(x, y, 'sparkle', 4, { size: 3, color: C.honey, spread: 1, life: 1, gravity: 0 });
+        }
+    }
+    onMove(x, y) { if (this.petting && U.dist(x, y, this.catX, this.catY) < 50) { if (Math.random() < 0.15) this.g.ps.spawn(x, y, 'heart', 1, { size: 3, color: C.coralLight, vy: -1, life: 1.5, gravity: 0 }); } }
+    onUp() { if (this.petProgress >= 1) { this.hint = ''; this.text = '小家伙也很喜欢你们的小家'; this.t = 0; } }
+}
+
+// ==================== SCENE 7: Job Loss (Rainy Day) ====================
+class S7 extends Scene {
+    enter() { super.enter(); this.text = '那天下了很大的雨，你很难过'; this.hint = '轻轻擦去她的眼泪'; this.drops = []; this.tearWipe = 0; this.wiping = false; for (let i = 0; i < 80; i++) this.drops.push({ x: U.rand(0, 2000), y: U.rand(0, 600), speed: U.rand(200, 400), len: U.rand(10, 20), maxY: this.g.h }); }
+    update(dt) { super.update(dt); if (this.tearWipe >= 1 && this.t > 1.5) this.done = true; }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Rainy gray-blue atmosphere
+        drawSky(ctx, w, h, C.navyLight, C.gray, C.grayLight);
+        wcWash(ctx, w * 0.5, h * 0.4, 250, C.navy, 0.1);
+        drawPaperTexture(ctx, w, h);
+        // Rain
+        drawRaindrops(ctx, this.drops, U.T);
+        drawGround(ctx, w, h, h * 0.72, C.gray, C.darkGray);
+        // Umbrella over characters
+        const ux = w / 2, uy = h * 0.35;
+        ctx.save();
+        ctx.fillStyle = C.coral;
+        ctx.filter = 'blur(1px)';
+        ctx.beginPath();
+        ctx.ellipse(ux, uy, 80, 30, 0, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = C.coralDeep;
+        ctx.beginPath();
+        ctx.ellipse(ux, uy, 80, 10, 0, Math.PI, 0);
+        ctx.fill();
+        ctx.restore();
+        // Umbrella handle
+        ctx.strokeStyle = C.warmBrown; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(ux, uy + 50); ctx.stroke();
+        // Girl with tears
+        const sc = Math.min(1.3, w / 300);
+        drawGirl(ctx, w * 0.5, h * 0.52, sc, { expression: 'sad' });
+        drawBoy(ctx, w * 0.5, h * 0.52, sc * 0.8, { expression: 'sad' });
+        // Tears
+        if (!this.wiping || this.tearWipe < 1) {
+            const tearY = h * 0.5 + Math.sin(this.t * 2) * 3;
+            ctx.save();
+            ctx.fillStyle = C.rgba(C.sky, 0.5);
+            ctx.filter = 'blur(0.5px)';
+            for (let i = 0; i < 3 - Math.floor(this.tearWipe * 3); i++) {
+                ctx.beginPath();
+                ctx.ellipse(w * 0.5 - 10 + i * 10, tearY + 20 + i * 5, 2, 8, 0, 0, Math.PI*2);
+                ctx.fill();
             }
-            if (this.celebT > 1 && this.celebT < 8) this.g.ps.rainHearts(this.g.w, 3);
-            if (this.celebT > 2.5 && this.phase < 5) {
-                this.phase = 5;
-                this.g.setSceneText('那就继续牵着手 一起走吧 ♥');
-                this.g.setHint('');
+            ctx.restore();
+        }
+        // Wipe progress
+        if (this.wiping) {
+            ctx.save();
+            ctx.strokeStyle = C.coral; ctx.lineWidth = 3;
+            ctx.globalAlpha = 0.6;
+            ctx.filter = 'blur(1px)';
+            ctx.beginPath();
+            ctx.arc(w * 0.5, h * 0.5, 35, -Math.PI/2, -Math.PI/2 + this.tearWipe * Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+    onDown(x, y) {
+        if (U.dist(x, y, this.g.w * 0.5, this.g.h * 0.5) < 50) { this.wiping = true; }
+    }
+    onMove(x, y) {
+        if (this.wiping) {
+            if (U.dist(x, y, this.g.w * 0.5, this.g.h * 0.5) < 50) {
+                this.tearWipe = Math.min(1, this.tearWipe + 0.02);
+                if (Math.random() < 0.3) this.g.ps.spawn(x, y, 'sparkle', 2, { size: 2, color: C.skyLight, spread: 0.5, life: 0.8, gravity: 0 });
             }
+        }
+    }
+    onUp() { if (this.tearWipe >= 1) { this.wiping = false; this.hint = ''; this.text = '别哭，有我在'; this.t = 0; this.g.ps.spawn(this.g.w/2, this.g.h*0.5, 'heart', 8, { size: 4, color: C.coral, spread: 2, life: 2, gravity: -0.03 }); } }
+}
+
+// ==================== SCENE 8: Self Media (Studio) ====================
+class S8 extends Scene {
+    enter() { super.enter(); this.text = '你开始创业做自媒体，闪闪发光'; this.hint = '轻触补光灯，拍下美好'; this.taps = 0; this.maxTaps = 4; this.flashT = 0; }
+    update(dt) { super.update(dt); if (this.flashT > 0) this.flashT -= dt * 3; if (this.taps >= this.maxTaps && this.t > 1.5) this.done = true; }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Studio atmosphere
+        drawSky(ctx, w, h, C.purpleLight, C.lavender, C.cream);
+        wcWash(ctx, w * 0.3, h * 0.3, 200, C.lavender, 0.12);
+        wcWash(ctx, w * 0.7, h * 0.2, 150, C.honey, 0.1);
+        drawPaperTexture(ctx, w, h);
+        drawGround(ctx, w, h, h * 0.72, C.lavenderDeep, C.purple);
+        // Ring light
+        const rx = w * 0.5, ry = h * 0.3;
+        wcWash(ctx, rx, ry, 60, C.honey, 0.3);
+        sCircle(ctx, rx, ry, 30, C.darkBrown, 4);
+        fCircle(ctx, rx, ry, 25, C.rgba(C.honey, 0.3));
+        // Light stand
+        ctx.strokeStyle = C.darkBrown; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(rx, ry + 30); ctx.lineTo(rx, h * 0.72); ctx.stroke();
+        ctx.fillStyle = C.darkBrown;
+        ctx.beginPath(); ctx.moveTo(rx - 15, h * 0.72); ctx.lineTo(rx + 15, h * 0.72); ctx.lineTo(rx + 10, h * 0.72 + 5); ctx.lineTo(rx - 10, h * 0.72 + 5); ctx.fill();
+        // Camera
+        ctx.fillStyle = C.darkGray;
+        fRR(ctx, w * 0.15 - 20, h * 0.5, 40, 25, 4, C.darkGray);
+        fCircle(ctx, w * 0.15, h * 0.55, 10, C.navy);
+        // Flash effect
+        if (this.flashT > 0) {
+            ctx.save();
+            ctx.globalAlpha = this.flashT * 0.6;
+            ctx.fillStyle = C.white;
+            ctx.fillRect(0, 0, w, h);
+            ctx.restore();
+        }
+        // Character (girl working)
+        const sc = Math.min(1.3, w / 300);
+        drawGirl(ctx, w * 0.55, h * 0.55, sc, { expression: 'happy', blush: true });
+    }
+    onDown(x, y) {
+        const rx = this.g.w * 0.5, ry = this.g.h * 0.3;
+        if (U.dist(x, y, rx, ry) < 45) {
+            this.taps++;
+            this.flashT = 1;
+            this.g.ps.spawn(rx, ry, 'sparkle', 10, { size: 4, color: C.honey, spread: 3, life: 1.5, gravity: 0 });
+            if (this.taps >= this.maxTaps) { this.hint = ''; this.text = '你认真的样子，真的很美'; this.t = 0; }
+        }
+    }
+}
+
+// ==================== SCENE 9: Fight ====================
+class S9 extends Scene {
+    enter() { super.enter(); this.text = '吵了一架，各自沉默'; this.hint = '把他们拖到一起'; this.boyX = 0; this.girlX = 0; this.targetX = 0; this.dragging = null; this.merged = false; }
+    update(dt) {
+        super.update(dt);
+        const w = this.g.w;
+        if (!this.boyX) { this.boyX = w * 0.2; this.girlX = w * 0.8; }
+        this.targetX = w * 0.5;
+        this.boyX = U.lerp(this.boyX, this.dragging === 'boy' ? this.boyX : (this.merged ? this.targetX - 40 : w * 0.2), dt * 3);
+        this.girlX = U.lerp(this.girlX, this.dragging === 'girl' ? this.girlX : (this.merged ? this.targetX + 40 : w * 0.8), dt * 3);
+        if (this.merged && this.t > 2) this.done = true;
+    }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Cold blue atmosphere
+        drawSky(ctx, w, h, C.navy, C.navyLight, C.purple);
+        wcWash(ctx, w * 0.3, h * 0.3, 200, C.navy, 0.08);
+        wcWash(ctx, w * 0.7, h * 0.3, 200, C.purple, 0.08);
+        drawPaperTexture(ctx, w, h);
+        drawGround(ctx, w, h, h * 0.72, C.purple, C.navy);
+        // Distance gap visualization
+        if (!this.merged) {
+            ctx.save();
+            ctx.strokeStyle = C.rgba(C.gray, 0.15); ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(this.boyX, h * 0.55); ctx.lineTo(this.girlX, h * 0.55); ctx.stroke();
+            ctx.restore();
+        }
+        // Characters
+        const sc = Math.min(1.2, w / 320);
+        const expr = this.merged ? 'happy' : 'sad';
+        drawBoy(ctx, this.boyX, h * 0.52, sc, { expression: expr, blush: this.merged });
+        drawGirl(ctx, this.girlX, h * 0.52, sc, { expression: expr, blush: this.merged });
+        // Hearts when merged
+        if (this.merged) {
+            if (Math.random() < 0.08) this.g.ps.spawn(w * 0.5, h * 0.4, 'heart', 1, { size: 4, color: C.coral, vy: -1, life: 2, gravity: 0 });
+        }
+    }
+    onDown(x, y) {
+        const h = this.g.h;
+        if (U.dist(x, y, this.boyX, h * 0.52) < 40) this.dragging = 'boy';
+        else if (U.dist(x, y, this.girlX, h * 0.52) < 40) this.dragging = 'girl';
+    }
+    onMove(x, y) {
+        if (this.dragging === 'boy') this.boyX = U.clamp(x, 0, this.girlX - 60);
+        if (this.dragging === 'girl') this.girlX = U.clamp(x, this.boyX + 60, this.g.w);
+    }
+    onUp() {
+        if (this.dragging) {
+            if (Math.abs(this.boyX - this.girlX) < 90) {
+                this.merged = true;
+                this.hint = '';
+                this.text = '和好如初，再也不放手';
+                this.t = 0;
+                this.g.ps.spawn(this.g.w / 2, this.g.h * 0.5, 'heart', 15, { size: 5, color: C.coral, spread: 3, life: 2.5, gravity: -0.05 });
+            }
+            this.dragging = null;
+        }
+    }
+}
+
+// ==================== SCENE 10: Reconciliation (Sunset) ====================
+class S10 extends Scene {
+    enter() { super.enter(); this.text = '夕阳下，一切都释然了'; this.hint = '轻触飘散的光点'; this.taps = 0; this.maxTaps = 6; }
+    update(dt) {
+        super.update(dt);
+        if (Math.random() < 0.1) this.g.ps.spawn(U.rand(0, this.g.w), U.rand(0, this.g.h * 0.5), 'sparkle', 1, { size: 3, color: C.honey, vy: -0.5, life: 3, gravity: 0 });
+        if (this.taps >= this.maxTaps && this.t > 1.5) this.done = true;
+    }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Warm sunset
+        drawSky(ctx, w, h, C.sunset, C.honey, C.coral);
+        wcWash(ctx, w * 0.5, h * 0.25, 300, C.honey, 0.2);
+        wcWash(ctx, w * 0.3, h * 0.4, 200, C.coral, 0.1);
+        drawPaperTexture(ctx, w, h);
+        drawGround(ctx, w, h, h * 0.72, C.sunsetDeep, C.darkBrown);
+        // Sun
+        const sx = w * 0.5, sy = h * 0.35;
+        wcWash(ctx, sx, sy, 120, C.honey, 0.3);
+        fCircle(ctx, sx, sy, 40, C.honeyDeep);
+        // Clouds
+        drawCloud(ctx, w * 0.2, h * 0.15, 1.2, C.coralLight);
+        drawCloud(ctx, w * 0.8, h * 0.2, 1, C.honey);
+        // Characters together
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.42, h * 0.55, sc, { expression: 'happy', blush: true });
+        drawGirl(ctx, w * 0.58, h * 0.55, sc, { expression: 'happy', blush: true });
+    }
+    onDown(x, y) {
+        this.taps++;
+        this.g.ps.spawn(x, y, 'sparkle', 8, { size: 4, color: C.honey, spread: 2.5, life: 1.5, gravity: 0 });
+        this.g.ps.spawn(x, y, 'heart', 3, { size: 4, color: C.coral, spread: 2, life: 2, gravity: -0.03 });
+        if (this.taps >= this.maxTaps) { this.hint = ''; this.text = '余生很长，请多指教'; this.t = 0; }
+    }
+}
+
+// ==================== SCENE 11: Late Home ====================
+class S11 extends Scene {
+    enter() { super.enter(); this.text = '加班到很晚回家，你和仙姑都在等我'; this.hint = '轻触窗户，点亮回家的灯'; this.lightsOn = false; this.lightT = 0; }
+    update(dt) { super.update(dt); if (this.lightsOn) { this.lightT += dt; if (this.lightT > 2) this.done = true; } }
+    render(ctx) {
+        const w = this.g.w, h = this.g.h;
+        // Night scene
+        drawSky(ctx, w, h, C.navy, C.navyLight, C.purple);
+        if (!this.stars) this.stars = makeStars(w, h, 50, 1.5);
+        drawStars(ctx, this.stars, U.T);
+        drawPaperTexture(ctx, w, h);
+        drawGround(ctx, w, h, h * 0.72, C.purple, C.navy);
+        // House
+        const hx = w * 0.5, hy = h * 0.45;
+        // House body
+        ctx.fillStyle = C.warmBrown;
+        fRR(ctx, hx - 60, hy, 120, 80, 5, C.warmBrown);
+        // Roof
+        ctx.fillStyle = C.darkBrown;
+        ctx.beginPath();
+        ctx.moveTo(hx - 70, hy); ctx.lineTo(hx, hy - 40); ctx.lineTo(hx + 70, hy);
+        ctx.closePath(); ctx.fill();
+        // Window
+        const lit = this.lightsOn ? Math.min(1, this.lightT) : 0;
+        ctx.fillStyle = lit > 0 ? C.honey : C.navyLight;
+        fRR(ctx, hx - 20, hy + 15, 40, 35, 3, ctx.fillStyle);
+        if (lit > 0) { wcWash(ctx, hx, hy + 30, 60, C.honey, 0.3 * lit); }
+        // Door
+        ctx.fillStyle = C.darkBrown;
+        fRR(ctx, hx - 12, hy + 42, 24, 38, 2, C.darkBrown);
+        // Light from window when on
+        if (lit > 0) {
+            ctx.save();
+            ctx.globalAlpha = lit * 0.4;
+            ctx.fillStyle = C.honey;
+            ctx.filter = 'blur(10px)';
+            ctx.beginPath();
+            ctx.moveTo(hx, hy + 30);
+            ctx.lineTo(hx - 80, h * 0.72);
+            ctx.lineTo(hx + 80, h * 0.72);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+        // Girl at door
+        const sc = Math.min(1.1, w / 350);
+        if (lit > 0) drawGirl(ctx, hx, hy + 65, sc * 0.7, { expression: 'happy', blush: true });
+        // Cat at door
+        if (lit > 0) drawCat(ctx, hx + 30, hy + 70, sc * 0.4, { expression: 'enjoy' });
+        // Boy walking home
+        const walkProg = this.lightsOn ? U.clamp(this.lightT / 2, 0, 1) : 0;
+        const boyX = U.lerp(w * 0.1, hx - 40, walkProg);
+        drawBoy(ctx, boyX, h * 0.58, sc, { expression: this.lightsOn ? 'happy' : 'sad' });
+    }
+    onDown(x, y) {
+        const hx = this.g.w * 0.5, hy = this.g.h * 0.45;
+        if (!this.lightsOn && U.dist(x, y, hx, hy + 30) < 40) {
+            this.lightsOn = true;
+            this.hint = '';
+            this.g.ps.spawn(hx, hy + 30, 'sparkle', 12, { size: 4, color: C.honey, spread: 2, life: 1.5, gravity: 0 });
+        }
+    }
+}
+
+// ==================== SCENE 12: Ending ====================
+class S12 extends Scene {
+    enter() { super.enter(); this.text = ''; this.hint = '轻触星空，许下心愿'; this.stars = makeStars(this.g.w, this.g.h, 80, 2.5); this.taps = 0; this.maxTaps = 8; this.ended = false; }
+    update(dt) {
+        super.update(dt);
+        if (Math.random() < 0.08) this.g.ps.spawn(U.rand(0, this.g.w), U.rand(0, this.g.h * 0.6), 'star', 1, { size: 2, color: C.cream, vy: -0.3, life: 4, gravity: 0 });
+        if (Math.random() < 0.05) this.g.ps.spawn(U.rand(0, this.g.w), U.rand(0, this.g.h * 0.5), 'heart', 1, { size: 3, color: C.coral, vy: -0.5, life: 4, gravity: -0.01 });
+        if (this.taps >= this.maxTaps && !this.ended) {
+            this.ended = true;
+            this.text = '七夕快乐，未来的每一天都在一起';
+            this.hint = '';
+            for (let i = 0; i < 30; i++) this.g.ps.spawn(U.rand(0, this.g.w), U.rand(0, this.g.h * 0.7), 'heart', 1, { size: U.rand(4, 8), color: C.coral, spread: 2, life: 3, gravity: -0.02 });
         }
     }
     render(ctx) {
-        fRect(ctx, 0, 0, this.g.w, this.g.h, gradV(ctx, this.g.w, this.g.h, [[0, '#1a1530'], [0.5, '#2e2348'], [1, '#1a1530']]));
-        drawStars(ctx, this.stars, this.t);
-        if (this.phase >= 3 && !this.celebrating) {
-            const cx = this.g.w / 2, cy = this.g.h * 0.65;
-            const bw = Math.min(130, this.g.w * 0.32), bh = 48;
-            const ps = 1 + Math.sin(this.t * 3) * 0.05;
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.scale(ps, ps);
-            const gg = ctx.createRadialGradient(0, 0, 0, 0, 0, bw);
-            gg.addColorStop(0, 'rgba(255,139,123,0.4)');
-            gg.addColorStop(1, 'rgba(255,139,123,0)');
-            ctx.fillStyle = gg;
-            ctx.fillRect(-bw, -bh, bw * 2, bh * 2);
-            fRR(ctx, -bw / 2, -bh / 2, bw, bh, 24, this.btnP ? C.coralLight : C.coral);
-            sRR(ctx, -bw / 2, -bh / 2, bw, bh, 24, C.cream, 2);
-            fText(ctx, '愿 意', 0, 0, '20px ' + FT, C.cream, 'center', 'middle');
-            ctx.restore();
-        }
-        if (this.phase >= 5) {
-            const cx = this.g.w / 2, cy = this.g.h * 0.4;
-            const sc = Math.min(0.7, this.g.w / 320);
-            drawBoy(ctx, cx - 35, cy, sc, { expression: 'happy', blush: true });
-            drawGirl(ctx, cx + 35, cy, sc, { expression: 'happy', blush: true });
-            fHeart(ctx, cx, cy - 65, 14 + Math.sin(this.t * 3) * 2, C.rose);
-            drawCat(ctx, cx, cy + 50, sc * 0.6, { expression: 'enjoy' });
+        const w = this.g.w, h = this.g.h;
+        // Beautiful starry sky
+        drawSky(ctx, w, h, C.navy, C.purple, C.purpleLight);
+        wcWash(ctx, w * 0.3, h * 0.2, 200, C.lavender, 0.12);
+        wcWash(ctx, w * 0.7, h * 0.15, 180, C.lavenderDeep, 0.1);
+        drawStars(ctx, this.stars, U.T);
+        drawPaperTexture(ctx, w, h);
+        // Moon
+        const mx = w * 0.8, my = h * 0.15;
+        wcWash(ctx, mx, my, 50, C.cream, 0.2);
+        fCircle(ctx, mx, my, 25, C.cream);
+        // Characters
+        const sc = Math.min(1.3, w / 300);
+        drawBoy(ctx, w * 0.42, h * 0.58, sc, { expression: 'happy', blush: true });
+        drawGirl(ctx, w * 0.58, h * 0.58, sc, { expression: 'happy', blush: true });
+        // Big heart between them
+        if (this.ended) {
+            const pulse = 1 + Math.sin(this.t * 3) * 0.1;
+            drawHeart(ctx, w / 2, h * 0.5, 2 * pulse, C.coral, 0.8);
         }
     }
     onDown(x, y) {
-        if (this.phase >= 3 && !this.celebrating) {
-            const cx = this.g.w / 2, cy = this.g.h * 0.65;
-            const bw = Math.min(130, this.g.w * 0.32), bh = 48;
-            if (Math.abs(x - cx) < bw / 2 && Math.abs(y - cy) < bh / 2) {
-                this.btnP = true;
-                this.celebrating = true;
-                this.celebT = 0;
-                this.g.ps.firework(cx, cy - 50);
-                this.g.ps.burstHearts(cx, cy, 30);
-                this.done = true;
-            }
+        if (!this.ended) {
+            this.taps++;
+            this.g.ps.spawn(x, y, 'star', 5, { size: 4, color: C.cream, spread: 2, life: 2, gravity: 0 });
+            this.g.ps.spawn(x, y, 'sparkle', 3, { size: 3, color: C.honey, spread: 1.5, life: 1.5, gravity: 0 });
         }
     }
 }
 
-// ==================== AUDIO: NOTE FREQUENCIES ====================
-const NOTE_FREQ = {
-    'C2': 65.41, 'D2': 73.42, 'E2': 82.41, 'F2': 87.31, 'G2': 98.00, 'A2': 110.00, 'B2': 123.47,
-    'C3': 130.81, 'D3': 146.83, 'E3': 164.81, 'F3': 174.61, 'G3': 196.00, 'A3': 220.00, 'B3': 246.94,
-    'C4': 261.63, 'D4': 293.66, 'E4': 329.63, 'F4': 349.23, 'G4': 392.00, 'A4': 440.00, 'B4': 493.88,
-    'C5': 523.25, 'D5': 587.33, 'E5': 659.25, 'F5': 698.46, 'G5': 783.99, 'A5': 880.00
-};
-
-// ==================== AUDIO: MELODY DATA ====================
-// C major 4/4 69BPM, chord progression: C -> G/B -> Am -> F -> G -> C
-const MELODY = {
-    verse: [
-        [['E4', 0.5], ['G4', 0.5], ['A4', 1], ['G4', 0.5], ['E4', 0.5], ['C4', 1]],
-        [['D4', 0.5], ['G4', 0.5], ['A4', 1], ['G4', 0.5], ['D4', 0.5], ['B3', 1]],
-        [['C4', 0.5], ['E4', 0.5], ['G4', 1], ['E4', 0.5], ['C4', 0.5], ['A3', 1]],
-        [['A3', 0.5], ['C4', 0.5], ['F4', 1], ['E4', 0.5], ['C4', 0.5], ['A3', 1]],
-        [['B3', 0.5], ['D4', 0.5], ['G4', 1], ['A4', 0.5], ['G4', 0.5], ['D4', 1]],
-        [['C4', 0.5], ['E4', 0.5], ['G4', 1], ['C5', 0.5], ['B4', 0.5], ['G4', 1]]
-    ],
-    chorus: [
-        [['G4', 0.5], ['C5', 0.5], ['E5', 1], ['D5', 0.5], ['C5', 0.5], ['G4', 1]],
-        [['G4', 0.5], ['B4', 0.5], ['D5', 1], ['C5', 0.5], ['B4', 0.5], ['G4', 1]],
-        [['A4', 0.5], ['C5', 0.5], ['E5', 1], ['D5', 0.5], ['C5', 0.5], ['A4', 1]],
-        [['F4', 0.5], ['A4', 0.5], ['C5', 1], ['D5', 0.5], ['C5', 0.5], ['A4', 1]],
-        [['G4', 0.5], ['B4', 0.5], ['D5', 1], ['E5', 0.5], ['D5', 0.5], ['B4', 1]],
-        [['G4', 0.5], ['C5', 0.5], ['E5', 1], ['G5', 0.5], ['E5', 0.5], ['C5', 1]]
-    ],
-    bass: ['C3', 'B2', 'A2', 'F2', 'G2', 'C3'],
-    chords: [
-        ['C4', 'E4', 'G4'], ['B3', 'D4', 'G4'], ['A3', 'C4', 'E4'],
-        ['F3', 'A3', 'C4'], ['G3', 'B3', 'D4'], ['C4', 'E4', 'G4']
-    ]
-};
-
-// ==================== AUDIO SYSTEM ====================
+// ==================== MUSIC ====================
 class Music {
     constructor() {
-        this.ctx = null;
-        this.master = null;
-        this.playing = false;
-        this.bpm = 69;
-        this.beatDur = 60 / this.bpm;
-        this.barDur = this.beatDur * 4;
-        this.nextBarTime = 0;
-        this.barIndex = 0;
-        this.timer = null;
+        this.audioCtx = null;
+        this.muted = false;
+        this.gain = null;
+        this.melodyTimer = 0;
+        this.noteIdx = 0;
     }
-
-    init() {
-        if (this.ctx) return;
-        try {
-            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-            this.master = this.ctx.createGain();
-            this.master.gain.value = 0.1;
-            this.master.connect(this.ctx.destination);
-        } catch (e) {
-            console.warn('Web Audio API not supported');
-        }
-    }
-
-    freq(note) { return NOTE_FREQ[note] || 261.63; }
-
-    playNote(freq, start, dur, type, vol) {
-        if (!this.ctx) return;
-        const osc = this.ctx.createOscillator();
-        const gain = this.ctx.createGain();
-        osc.type = type;
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0, start);
-        gain.gain.linearRampToValueAtTime(vol, start + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
-        osc.connect(gain);
-        gain.connect(this.master);
-        osc.start(start);
-        osc.stop(start + dur + 0.05);
-    }
-
-    scheduleBar(barIdx, startTime) {
-        const section = barIdx < 6 ? 'verse' : (barIdx < 12 ? 'chorus' : 'verse');
-        const barInSec = barIdx % 6;
-        const melody = MELODY[section][barInSec];
-        const beatDur = this.beatDur;
-
-        // Melody (sine wave - piano-like)
-        let t = startTime;
-        for (const [note, dur] of melody) {
-            this.playNote(this.freq(note), t, dur * beatDur * 0.9, 'sine', 0.2);
-            t += dur * beatDur;
-        }
-        // Bass (triangle wave)
-        this.playNote(this.freq(MELODY.bass[barInSec]), startTime, this.barDur * 0.95, 'triangle', 0.12);
-        // Chord accompaniment (triangle wave, soft)
-        for (const note of MELODY.chords[barInSec]) {
-            this.playNote(this.freq(note), startTime, this.barDur * 0.9, 'triangle', 0.05);
-        }
-    }
-
-    scheduler() {
-        if (!this.ctx) return;
-        while (this.nextBarTime < this.ctx.currentTime + 0.3) {
-            this.scheduleBar(this.barIndex % 18, this.nextBarTime);
-            this.nextBarTime += this.barDur;
-            this.barIndex++;
-        }
-    }
-
     play() {
-        this.init();
-        if (!this.ctx) return;
-        if (this.ctx.state === 'suspended') this.ctx.resume();
-        if (this.playing) return;
-        this.playing = true;
-        this.nextBarTime = this.ctx.currentTime + 0.1;
-        this.barIndex = 0;
-        this.scheduler();
-        this.timer = setInterval(() => this.scheduler(), 100);
+        if (this.audioCtx) return;
+        try {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            this.gain = this.audioCtx.createGain();
+            this.gain.gain.value = 0.08;
+            this.gain.connect(this.audioCtx.destination);
+            this.noteIdx = 0;
+            this.melodyTimer = 0;
+        } catch (e) {}
     }
-
-    pause() {
-        this.playing = false;
-        if (this.timer) { clearInterval(this.timer); this.timer = null; }
-        if (this.ctx) this.ctx.suspend();
+    toggleMute() {
+        this.muted = !this.muted;
+        if (this.gain) this.gain.gain.value = this.muted ? 0 : 0.08;
     }
-
-    toggle() {
-        if (this.playing) this.pause();
-        else this.play();
-        return this.playing;
+    update(dt) {
+        if (!this.audioCtx || this.muted) return;
+        this.melodyTimer -= dt;
+        if (this.melodyTimer <= 0) {
+            this.melodyTimer = 0.5;
+            // Simple melody (pentatonic)
+            const notes = [523, 587, 659, 784, 880, 988, 1047, 880, 784, 659, 587, 523];
+            const freq = notes[this.noteIdx % notes.length];
+            this.noteIdx++;
+            const osc = this.audioCtx.createOscillator();
+            const noteGain = this.audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            noteGain.gain.setValueAtTime(0, this.audioCtx.currentTime);
+            noteGain.gain.linearRampToValueAtTime(0.5, this.audioCtx.currentTime + 0.05);
+            noteGain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.45);
+            osc.connect(noteGain);
+            noteGain.connect(this.gain);
+            osc.start();
+            osc.stop(this.audioCtx.currentTime + 0.5);
+        }
     }
 }
 
@@ -1599,7 +1920,7 @@ class Game {
         this.completionTimer = -1;
         this.completionHandled = false;
         this.fadeAlpha = 0;
-        this.fadeDur = 0.5;
+        this.fadeDur = 0.6;
         this.lastTime = 0;
         this.audioStarted = false;
         this.pointerDown = false;
@@ -1684,19 +2005,17 @@ class Game {
         this.ui.progressDots = document.getElementById('progress-dots');
         this.ui.sceneText = document.getElementById('scene-text');
         this.ui.hintText = document.getElementById('hint-text');
-
-        this.ui.musicBtn.addEventListener('pointerdown', (e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            const playing = this.music.toggle();
-            this.ui.musicBtn.classList.toggle('muted', !playing);
-        });
+        if (this.ui.musicBtn) {
+            this.ui.musicBtn.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                this.music.toggleMute();
+                this.ui.musicBtn.classList.toggle('muted');
+            });
+        }
     }
 
     updateUI() {
-        const scene = this.scenes[this.currentScene];
-        this.setSceneText(scene.text);
-        this.setHint(scene.hint);
         this.ui.progressDots.innerHTML = '';
         for (let i = 0; i < this.scenes.length; i++) {
             const dot = document.createElement('div');
@@ -1705,6 +2024,8 @@ class Game {
             if (i === this.currentScene) dot.classList.add('active');
             this.ui.progressDots.appendChild(dot);
         }
+        this.setSceneText(this.scenes[this.currentScene].text);
+        this.setHint(this.scenes[this.currentScene].hint);
     }
 
     setSceneText(text) {
@@ -1730,6 +2051,7 @@ class Game {
 
     update(dt) {
         this.ps.update(dt);
+        this.music.update(dt);
 
         if (this.state === 'playing') {
             this.scenes[this.currentScene].update(dt);
