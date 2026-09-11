@@ -1,0 +1,360 @@
+:root {
+    --cream: #FFF8F0;
+    --warm-white: #FFFDF9;
+    --peach: #FFD4B8;
+    --coral: #FF8B7B;
+    --coral-light: #FFB5A0;
+    --honey: #FFC857;
+    --warm-brown: #8B6F5C;
+    --dark-brown: #5C4033;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+html, body {
+    width: 100%;
+    height: 100svh;
+    overflow: hidden;
+    background: var(--dark-brown);
+    font-family: 'Noto Serif SC', serif;
+    touch-action: none;
+    overscroll-behavior: none;
+}
+
+#game-canvas {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    touch-action: none;
+}
+
+/* ==================== Loading Screen ==================== */
+.loading-screen {
+    position: fixed;
+    inset: 0;
+    background: linear-gradient(160deg, #1a1530 0%, #2e2348 50%, #3a2c5c 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.8s ease;
+}
+
+.loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.loading-envelope {
+    position: relative;
+    width: 100px;
+    height: 70px;
+    animation: envFloat 2s ease-in-out infinite;
+    margin-bottom: 30px;
+}
+
+.envelope-body {
+    position: absolute;
+    bottom: 0;
+    width: 100px;
+    height: 60px;
+    background: var(--cream);
+    border-radius: 4px;
+    box-shadow: 0 4px 20px rgba(255, 200, 87, 0.3);
+}
+
+.envelope-flap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 0;
+    border-left: 50px solid transparent;
+    border-right: 50px solid transparent;
+    border-top: 25px solid var(--peach);
+    border-radius: 4px 4px 0 0;
+}
+
+.envelope-seal {
+    position: absolute;
+    top: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 16px;
+    background: var(--coral);
+    border-radius: 50%;
+    box-shadow: 0 0 10px var(--coral);
+    animation: sealPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes envFloat {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes sealPulse {
+    0%, 100% { box-shadow: 0 0 8px var(--coral); transform: translateX(-50%) scale(1); }
+    50% { box-shadow: 0 0 18px var(--coral), 0 0 28px var(--coral-light); transform: translateX(-50%) scale(1.1); }
+}
+
+.loading-text {
+    color: var(--cream);
+    font-size: 14px;
+    margin-bottom: 20px;
+    opacity: 0.7;
+    letter-spacing: 1px;
+}
+
+.loading-bar {
+    width: 200px;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.loading-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--coral), var(--honey));
+    border-radius: 2px;
+    /* 宽度由 JS 按**真实**加载进度驱动（方案 §4.7）。
+       刻意删掉原版的 `animation: loadFill 2.5s forwards` —— 那是与加载
+       完全无关的假进度，正是"首屏 3 秒"变成空头支票的原因。 */
+    transition: width 0.25s linear;
+}
+
+/* ==================== UI Overlay ==================== */
+.ui-overlay {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+}
+
+/* Music Button */
+.music-btn {
+    position: absolute;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    width: 42px;
+    height: 42px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 248, 240, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--cream);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    cursor: pointer;
+    transition: background 0.3s, transform 0.2s;
+    z-index: 20;
+}
+
+.music-btn:active {
+    transform: scale(0.92);
+    background: rgba(255, 248, 240, 0.25);
+}
+
+.music-btn.muted {
+    opacity: 0.5;
+}
+
+.music-btn.muted .music-icon::after {
+    content: '';
+    position: absolute;
+    width: 26px;
+    height: 2px;
+    background: var(--coral);
+    transform: rotate(-45deg);
+    border-radius: 1px;
+}
+
+.music-icon {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Progress Dots */
+.progress-dots {
+    position: absolute;
+    right: calc(10px + env(safe-area-inset-right, 0px));
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    pointer-events: none;
+    z-index: 15;
+}
+
+.progress-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: all 0.4s ease;
+}
+
+.progress-dot.done {
+    background: var(--coral-light);
+    opacity: 0.6;
+}
+
+.progress-dot.active {
+    width: 8px;
+    height: 8px;
+    background: var(--honey);
+    box-shadow: 0 0 8px var(--honey), 0 0 16px rgba(255, 200, 87, 0.4);
+}
+
+/* Scene Text */
+.scene-text {
+    position: absolute;
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--cream);
+    font-family: 'Ma Shan Zheng', serif;
+    font-size: 18px;
+    text-align: center;
+    max-width: 85%;
+    pointer-events: none;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.4), 0 0 20px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transition: opacity 0.8s ease;
+    line-height: 1.6;
+    z-index: 12;
+}
+
+.scene-text.show {
+    opacity: 1;
+}
+
+/* Hint Text */
+.hint-text {
+    position: absolute;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 248, 240, 0.5);
+    font-size: 13px;
+    text-align: center;
+    max-width: 80%;
+    pointer-events: none;
+    animation: hintPulse 2s ease-in-out infinite;
+    z-index: 12;
+    letter-spacing: 0.5px;
+}
+
+@keyframes hintPulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.65; }
+}
+
+/* ==================== 异常兜底提示 ==================== */
+/* WebGL 上下文丢失 / 加载超时 / 二次恢复失败时的提示。
+   铁律：任何情况下都不许白屏（方案 §4.8）。 */
+.fault-notice {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(26, 21, 48, 0.92);
+    color: var(--cream);
+    font-family: 'Ma Shan Zheng', 'STKaiti', 'KaiTi', 'Kaiti SC', cursive, serif;
+    font-size: 17px;
+    letter-spacing: 1px;
+    line-height: 1.8;
+    text-align: center;
+    padding: 32px;
+    z-index: 200;
+    cursor: pointer;
+}
+
+.fault-notice[hidden] {
+    display: none;
+}
+
+/* ==================== 气泡文字层（2.5D 重制新增） ==================== */
+/* 文字**刻意不进 3D**：14px 中文烘进贴图在 3D 里缩放会糊，且 tapped 要改色。
+   位置由逻辑平面从归一化坐标投影出来，每帧写 left/top。 */
+.bubble-layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.bubble-text {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+    font-family: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--dark-brown, #8B6F5C);
+    /* 不设 transition：透明度和位置都由 JS 每帧写，加了过渡反而会拖影 */
+    will-change: left, top, opacity;
+}
+
+/* 命中反馈：原版此处爆 6 个 sparkle 粒子（fx 层，M2 接），
+   M1 用一次轻微的放大代替，保证"点了有反应"这件事不掉链子。 */
+.bubble-pop {
+    animation: bubblePop 320ms cubic-bezier(0.22, 1.2, 0.36, 1) 1;
+}
+
+@keyframes bubblePop {
+    0% { transform: translate(-50%, -50%) scale(1); }
+    38% { transform: translate(-50%, -50%) scale(1.14); }
+    100% { transform: translate(-50%, -50%) scale(1); }
+}
+
+/* ==================== 真机性能浮层（M1 验收用） ==================== */
+/* 打开：URL 加 ?debug=1，或屏幕左上角连点 3 下。
+   不加过渡、不引第三方库，它自己不能成为性能噪声源。 */
+.perf-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 300;
+    margin: 6px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(26, 21, 48, 0.78);
+    color: #FFF8F0;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    white-space: pre;
+    pointer-events: none;
+}
+
+.perf-overlay[hidden] {
+    display: none;
+}
+
+/* 加载降级：超时兜底放行时的提示态 */
+.loading-screen.is-degraded .loading-text {
+    color: #FFC857;
+}

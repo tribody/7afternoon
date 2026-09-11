@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#5C4033">
+    <title>我们的故事 · 七夕</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-envelope">
+            <div class="envelope-body"></div>
+            <div class="envelope-flap"></div>
+            <div class="envelope-seal"></div>
+        </div>
+        <div class="loading-text">正在准备我们的故事...</div>
+        <div class="loading-bar">
+            <div class="loading-bar-fill"></div>
+        </div>
+    </div>
+
+    <!-- UI Overlay -->
+    <div id="ui-overlay" class="ui-overlay" style="display:none;">
+        <button id="music-btn" class="music-btn" aria-label="音乐开关">
+            <span class="music-icon">&#9834;</span>
+        </button>
+
+        <div id="progress-dots" class="progress-dots"></div>
+
+        <div id="scene-text" class="scene-text"></div>
+
+        <div id="hint-text" class="hint-text"></div>
+    </div>
+
+    <script src="game.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>bake harness · 7afternoon</title>
+  <style>
+    html, body { margin: 0; background: #1a1a1a; color: #c8c8c8; font: 12px/1.6 monospace; }
+    pre { padding: 12px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <pre id="log">bake harness · 正在引导…</pre>
+  <!-- 刻意不在这里放 <script src="../classic/game.js">：
+       由 main.js 等到 load 之后再动态注入，从而只取绘制函数、不启动 Game。 -->
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

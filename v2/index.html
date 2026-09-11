@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#5C4033">
+  <title>我们的故事 · 七夕</title>
+  <!--
+    ⚠️ M1 起刻意移除 Google Fonts CDN（wechat 大陆不可达，方案 §1.3 ⑤ / 风险 #2）。
+       字体栈已改为系统回退，见 style.css；M2 换子集化内联 woff2。
+  -->
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!--
+    气泡文字层：**刻意不进 3D**。
+    14px 的中文烘进贴图在 3D 缩放后会糊，且 tapped 状态要改颜色；
+    走 DOM 叠层字最清楚、改色零成本，位置由逻辑平面从归一化坐标投影得到。
+  -->
+  <div id="bubble-layer" class="bubble-layer" aria-live="polite"></div>
+
+  <!-- 加载屏：进度条宽度由 JS 按真实进度驱动，无 CSS 动画 -->
+  <div id="loading-screen" class="loading-screen">
+    <div class="loading-envelope">
+      <div class="envelope-body"></div>
+      <div class="envelope-flap"></div>
+      <div class="envelope-seal"></div>
+    </div>
+    <div class="loading-text">正在准备我们的故事...</div>
+    <div class="loading-bar">
+      <div class="loading-bar-fill" id="loading-fill"></div>
+    </div>
+  </div>
+
+  <!-- DOM UI 层：永不进 3D（方案 §4.3） -->
+  <div id="ui-overlay" class="ui-overlay" style="display:none;">
+    <button id="music-btn" class="music-btn" aria-label="音乐开关">
+      <span class="music-icon">&#9834;</span>
+    </button>
+    <div id="progress-dots" class="progress-dots"></div>
+    <div id="scene-text" class="scene-text"></div>
+    <div id="hint-text" class="hint-text"></div>
+  </div>
+
+  <!-- 异常兜底：context lost / 加载超时。绝不白屏（方案 §4.8） -->
+  <div id="fault-notice" class="fault-notice" hidden></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

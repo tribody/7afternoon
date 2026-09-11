@@ -1,46 +1,33 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#5C4033">
-    <title>我们的故事 · 七夕</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <!-- 这一页必须不缓存，否则改了开关线上不生效（X5 缓存极其激进） -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>我们的故事 · 七夕</title>
+  <script>
+    /*
+     * ┌──────────────────────────────────────────────────────────┐
+     * │  双轨开关 —— 回滚只需改下面这一行，push 后约 30 秒生效。  │
+     * │                                                          │
+     * │  './classic/'   原版（冻结基线，M4 前不动一个字节）      │
+     * │  './v2/'        three.js 2.5D 重制版                     │
+     * └──────────────────────────────────────────────────────────┘
+     */
+    var TARGET = './classic/';
+
+    // 透传 query/hash：入口 URL 会带 ?v=1.0.x 用于穿透微信缓存
+    location.replace(TARGET + location.search + location.hash);
+  </script>
 </head>
 <body>
-    <canvas id="game-canvas"></canvas>
-
-    <!-- Loading Screen -->
-    <div id="loading-screen" class="loading-screen">
-        <div class="loading-envelope">
-            <div class="envelope-body"></div>
-            <div class="envelope-flap"></div>
-            <div class="envelope-seal"></div>
-        </div>
-        <div class="loading-text">正在准备我们的故事...</div>
-        <div class="loading-bar">
-            <div class="loading-bar-fill"></div>
-        </div>
-    </div>
-
-    <!-- UI Overlay -->
-    <div id="ui-overlay" class="ui-overlay" style="display:none;">
-        <button id="music-btn" class="music-btn" aria-label="音乐开关">
-            <span class="music-icon">&#9834;</span>
-        </button>
-
-        <div id="progress-dots" class="progress-dots"></div>
-
-        <div id="scene-text" class="scene-text"></div>
-
-        <div id="hint-text" class="hint-text"></div>
-    </div>
-
-    <script src="game.js"></script>
+  <noscript>
+    <p style="font:16px/1.8 system-ui;padding:24px;text-align:center">
+      <a href="./classic/">进入我们的故事</a>
+    </p>
+  </noscript>
 </body>
 </html>

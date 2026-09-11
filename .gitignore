@@ -3,3 +3,13 @@
 .uploads/
 character-design-couple.jpg
 *.tmp
+
+# --- three.js 重制（M1）---
+node_modules/
+dist/
+public/
+bake-out/
+*.local
+
+# raw/ 是仅存的素材参考，刻意保留版本控制（体积 0.77MB），
+# 但绝不会进 public/ 或 dist/，因此不参与部署。

@@ -1,0 +1,32 @@
+{
+  "name": "7afternoon",
+  "version": "2.0.0-m1",
+  "private": true,
+  "type": "module",
+  "description": "我们的故事 · 七夕 —— three.js 2.5D 立体绘本重制（M1 可行性验证）",
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "prebuild": "node scripts/prebuild.mjs",
+    "dev": "node scripts/prebuild.mjs && node scripts/bake.mjs && vite",
+    "build": "node scripts/prebuild.mjs && node scripts/bake.mjs && vite build",
+    "preview": "vite preview --port 4173",
+    "typecheck": "tsc --noEmit",
+    "check:color": "node scripts/check-color.mjs",
+    "smoke": "node scripts/smoke-v2.mjs",
+    "diag:fidelity": "node scripts/diag-diff.mjs",
+    "ab": "node scripts/ab-material.mjs",
+    "bake": "node scripts/bake.mjs",
+    "deploy": "node scripts/deploy.mjs"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.4",
+    "playwright": "1.63.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.0"
+  }
+}
