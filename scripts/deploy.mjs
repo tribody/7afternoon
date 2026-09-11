@@ -47,9 +47,6 @@ const val = (f, d) => {
 
 const doPush = has('--push');
 const branch = val('--branch', 'gh-pages');
-const LIVE_BRANCHES = ['main', 'master'];
-const isLive = LIVE_BRANCHES.includes(branch);
-const confirmed = has('--i-know-this-is-the-live-site');
 
 const die = (msg) => {
   console.error(`\n✗ ${msg}\n`);
@@ -143,11 +140,80 @@ if (!doPush) {
 }
 
 // ══ 3. 推送 ══════════════════════════════════════════════════
-if (isLive && !confirmed) {
+//
+// ⚠️ 硬闸门 —— 孤儿树 + force push 只能用于**纯产物分支**。
+//
+//    这个仓库的 main 同时是源码分支和 Pages 发布源（根目录带 CNAME 佐证）。
+//    对它 force push 会一次性抹掉 game.js 等全部原版源码，而重制版源码
+//    （src/ bake/ scripts/ docs/）此前全是 untracked、别处没有备份 —— 不可恢复。
+//
+//    所以这条探测**不看分支名，只看远端那棵树的内容**：
+//    只要它含源码特征文件就拒绝。改分支名叫 gh-pages 也绕不过去。
+// 代理：清掉沙箱注入的那个（对 github.com:443 的 CONNECT 返回 502），改走本地代理
+const noProxyEnv = { ...process.env };
+for (const k of ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy']) delete noProxyEnv[k];
+
+const gitProxy = [];
+if (process.env.DEPLOY_NO_PROXY !== '1') {
+  const p = process.env.GIT_PROXY || 'http://127.0.0.1:7892';
+  gitProxy.push('-c', `http.proxy=${p}`, '-c', `https.proxy=${p}`);
+  console.log(`  经代理 ${p}（DEPLOY_NO_PROXY=1 可直连）`);
+}
+
+const SRC_MARKERS = ['src/main.ts', 'game.js', 'classic/game.js', 'package.json', 'vite.config.ts'];
+
+// 先问"这个分支在不在"。连不上就拒绝 —— 探测失败必须按"有源码"处理，
+// 否则一次网络抖动就会让保护静默失效。
+let refSha = '';
+try {
+  const out = execFileSync('git', [...gitProxy, 'ls-remote', '--heads', 'origin', branch], {
+    cwd: root,
+    encoding: 'utf8',
+    env: noProxyEnv,
+    timeout: 60000,
+  });
+  refSha = (out.trim().split('\n')[0] || '').split('\t')[0] || '';
+} catch (e) {
+  die(`连不上 origin，无法确认 ${branch} 的状态 —— 不敢 force push。\n  ${e.message}`);
+}
+
+// 分支存在才需要读它的树；不存在 = 全新分支，force push 是安全的
+let remoteTree = null;
+if (refSha) {
+  try {
+    execFileSync('git', [...gitProxy, 'fetch', '-q', 'origin', branch], {
+      cwd: root,
+      stdio: 'ignore',
+      env: noProxyEnv,
+      timeout: 60000,
+    });
+    remoteTree = new Set(
+      execFileSync('git', ['ls-tree', '-r', '--name-only', 'FETCH_HEAD'], {
+        cwd: root,
+        encoding: 'utf8',
+        env: noProxyEnv,
+      })
+        .split('\n')
+        .map((s) => s.trim()),
+    );
+  } catch (e) {
+    die(
+      `已确认 ${branch} 存在（${refSha.slice(0, 8)}）但读不到它的内容 —— 不敢 force push。\n  ${e.message}`,
+    );
+  }
+}
+
+const hitMarkers = remoteTree ? SRC_MARKERS.filter((f) => remoteTree.has(f)) : [];
+if (hitMarkers.length) {
   die(
-    `拒绝推送 ${branch} —— 那是**线上站点**所在的分支。\n` +
-      '  确需如此请再加 --i-know-this-is-the-live-site。\n' +
-      '  推荐做法：推到 gh-pages，在仓库设置里把 Pages 源切过去，线上零风险。',
+    `拒绝把孤儿产物树 force push 到 ${branch} —— 那个分支上有源码。\n` +
+      `  探测到的源码特征文件：${hitMarkers.join(', ')}\n` +
+      '\n' +
+      '  这个仓库 main 既是源码分支又是 Pages 发布源，force push 会永久抹掉源码。\n' +
+      '  要更新线上，二选一：\n' +
+      '    A. Settings → Pages 把发布源切到 gh-pages，再跑本脚本（默认分支就是它）；\n' +
+      '    B. 手工把 dist/ 同步进工作树后普通 commit（源码保留）—— 需要先把\n' +
+      '       源码入口 v2/ 与产物目录 v2/ 拆开，否则会互相覆盖。',
   );
 }
 
@@ -157,24 +223,10 @@ console.log(`\n▶ 推送目标：${remote}  →  refs/heads/${branch}`);
 // 临时孤儿仓库：干净、不碰工作树、不留历史
 const tmp = mkdtempSync(join(tmpdir(), '7a-deploy-'));
 const git = (args, opts = {}) =>
-  execFileSync('git', args, { cwd: tmp, stdio: 'inherit', env: pushEnv, ...opts });
-
-// ── 代理：清掉沙箱注入的那个，改走本地代理 ──────────────────
-const pushEnv = { ...process.env };
-delete pushEnv.HTTP_PROXY;
-delete pushEnv.HTTPS_PROXY;
-delete pushEnv.http_proxy;
-delete pushEnv.https_proxy;
-
-const proxyArgs = [];
-if (process.env.DEPLOY_NO_PROXY !== '1') {
-  const p = process.env.GIT_PROXY || 'http://127.0.0.1:7892';
-  proxyArgs.push('-c', `http.proxy=${p}`, '-c', `https.proxy=${p}`);
-  console.log(`  经代理 ${p}（DEPLOY_NO_PROXY=1 可直连）`);
-}
+  execFileSync('git', args, { cwd: tmp, stdio: 'inherit', env: noProxyEnv, ...opts });
 
 try {
-  execFileSync('git', ['init', '-q', '-b', 'deploy', tmp], { env: pushEnv });
+  execFileSync('git', ['init', '-q', '-b', 'deploy', tmp], { env: noProxyEnv });
   copyDir(dist, tmp);
   git(['add', '-A', '-f']);
   git([
@@ -187,7 +239,7 @@ try {
     '-m',
     `deploy: v2 M1（${new Date().toISOString().slice(0, 16).replace('T', ' ')}）`,
   ]);
-  git(['push', ...proxyArgs, '--force', remote, `HEAD:refs/heads/${branch}`]);
+  git(['push', ...gitProxy, '--force', remote, `HEAD:refs/heads/${branch}`]);
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
