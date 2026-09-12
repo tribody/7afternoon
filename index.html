@@ -19,8 +19,19 @@
      */
     var TARGET = './classic/';
 
-    // 透传 query/hash：入口 URL 会带 ?v=1.0.x 用于穿透微信缓存
-    location.replace(TARGET + location.search + location.hash);
+    /*
+     * 破缓存。微信 X5 对不带查询串的 HTML 缓存极其激进 —— 改了内容它照样把
+     * 旧的塞给你，页面就永远停在修复前的状态。加一个静态版本号，让更新后的
+     * 资源是个**新 URL**，浏览器必须重新取。
+     *
+     * ⚠️ 每次改动 classic/（或将来切到 v2）都要 bump 这个值，否则等于没改。
+     *    对外观的副作用只有一个尾巴 `?v=...`，无害。
+     */
+    var BUILD = '20260912b';
+
+    // 透传用户自己带的 query/hash
+    var extra = location.search ? '&' + location.search.slice(1) : '';
+    location.replace(TARGET + '?v=' + BUILD + extra + location.hash);
   </script>
 </head>
 <body>

@@ -2024,6 +2024,54 @@ class Game {
         this.lastTime = performance.now();
         requestAnimationFrame((t) => this.loop(t));
         setTimeout(() => this.hideLoading(), 2700);
+        this.setupFpsMeter();
+    }
+
+    /*
+     * ?fps=1 打开右上角帧率浮层。
+     *
+     * 这是**真机上唯一能拿到客观数字**的地方 —— 开发机跑出来的帧率对手机毫无
+     * 参考意义（headless 还是软件光栅）。真出问题时要的就是这四个数：
+     * 帧率、实际 DPR、canvas 像素尺寸、总填充量。
+     */
+    setupFpsMeter() {
+        this._fpsEl = null;
+        this._fpsFrames = 0;
+        this._fpsLast = 0;
+        if (!/[?&]fps\b/.test(location.search)) return;
+        const el = document.createElement('div');
+        el.id = 'fps-meter';
+        el.style.cssText =
+            'position:fixed;top:0;right:0;z-index:99999;padding:2px 6px;' +
+            'background:rgba(0,0,0,.55);color:#fff;font:12px/1.45 ui-monospace,monospace;' +
+            'pointer-events:none;white-space:pre;border-radius:0 0 0 6px';
+        el.textContent = 'fps --';
+        document.body.appendChild(el);
+        this._fpsEl = el;
+        this._fpsLast = performance.now();
+    }
+
+    tickFps(now) {
+        if (!this._fpsEl) return;
+        this._fpsFrames++;
+        const el = now - this._fpsLast;
+        if (el < 500) return;
+        const fps = (this._fpsFrames * 1000) / el;
+        const cv = this.canvas;
+        this._fpsEl.textContent =
+            fps.toFixed(1) +
+            ' fps\n' +
+            'dpr ' +
+            this.dpr +
+            '\n' +
+            cv.width +
+            '×' +
+            cv.height +
+            '\n' +
+            ((cv.width * cv.height) / 1e6).toFixed(2) +
+            'Mpx';
+        this._fpsFrames = 0;
+        this._fpsLast = now;
     }
 
     hideLoading() {
@@ -2036,7 +2084,12 @@ class Game {
     }
 
     resize() {
-        this.dpr = window.devicePixelRatio || 1;
+        // DPR 必须封顶：每帧是全画布重绘（渐变底 + 两团水彩 + 60 颗星 +
+        // 300 个纸纹点 + 角色），填充率就是帧预算本身。
+        // DPR 3 时 canvas 涨到 2.96M 像素 ≈ DPR 2 的 2.24 倍，肉眼收益极小、
+        // 帧率损失却是实打实的（实测填充量与帧耗时成正比）。
+        // 封到 2：手机上仍然锐利，中低端机才跑得动。
+        this.dpr = Math.min(window.devicePixelRatio || 1, 2);
         this.w = window.innerWidth;
         this.h = window.innerHeight;
         this.canvas.width = this.w * this.dpr;
@@ -2132,6 +2185,7 @@ class Game {
         const dt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
         this.lastTime = timestamp;
         U.T = timestamp / 1000;
+        this.tickFps(timestamp);
         try { this.update(dt); } catch (e) { console.error('Update error:', e); }
         try { this.render(); } catch (e) { console.error('Render error:', e); }
         requestAnimationFrame((t) => this.loop(t));

@@ -59,7 +59,8 @@ if (!withFont) {
 }
 
 const page = await ctx.newPage();
-await page.goto(base + '/classic/', { waitUntil: 'load', timeout: 20000 });
+// 带 ?fps=1：顺带验证那个真机诊断开关本身是不是好的
+await page.goto(base + '/classic/?fps=1', { waitUntil: 'load', timeout: 20000 });
 await page.waitForTimeout(5000); // 等过 2.7s 假加载 + 800ms 隐藏动画
 
 const buf = await page.screenshot();
@@ -75,6 +76,7 @@ const info = await page.evaluate(() => {
     sceneText: st?.textContent?.slice(0, 60) ?? '',
     hint: hint?.textContent?.slice(0, 40) ?? '',
     loadingDisplay: getComputedStyle(document.getElementById('loading-screen')).display,
+    fpsMeter: document.getElementById('fps-meter')?.textContent ?? null,
   };
 });
 
@@ -82,6 +84,10 @@ console.log(`✓ ${name}`);
 console.log('  canvas:', info.canvas, ' loading display:', info.loadingDisplay);
 console.log('  场景文案:', info.sceneText || '(空)');
 console.log('  提示文案:', info.hint || '(空)');
+console.log(
+  '  ?fps=1 浮层:',
+  info.fpsMeter === null ? '✗ 未出现（开关无效！）' : '✓ ' + info.fpsMeter.replace(/\n/g, ' | '),
+);
 
 await browser.close();
 server.close();
