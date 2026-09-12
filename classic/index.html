@@ -7,9 +7,19 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#5C4033">
     <title>我们的故事 · 七夕</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+    <!--
+      字体：这里原本是三个 Google Fonts 阻塞 link（preconnect ×2 + stylesheet ×1）。
+
+      fonts.googleapis.com 在中国大陆不可达，且是**挂起**而不是快速失败：
+      浏览器因此不渲染 body、不触发 load —— 而 game.js 的入口就写在
+      window load 里，于是页面永远停在 loading 上，一动不动。
+
+      实测（scripts/diag-mobile.mjs，微信 UA / 390×844@3x）：
+        fonts 挂起   → 30s 内 load 从未触发，Game.init 从未执行
+        fonts 失败   → 292ms load 完，3.9s 正常可玩
+
+      现改为系统字体栈（style.css 两处 + game.js 的 FT/FB），零外网依赖。
+    -->
     <link rel="stylesheet" href="style.css">
 </head>
 <body>

@@ -37,8 +37,11 @@ const C = {
     rgba: (c, a) => { const h = c.replace('#',''); const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16); return `rgba(${r},${g},${b},${a})`; }
 };
 
-const FT = "'Ma Shan Zheng', serif";
-const FB = "'Noto Serif SC', serif";
+// 字体栈带中文回退：Google Fonts 在中国大陆不可达，且是挂起而非快速失败，
+// 会把整个页面卡死在 loading（详见 classic/index.html 里的注释）。
+// 没有外网字体时，标题退到系统楷体、正文退到系统宋体。
+const FT = "'Ma Shan Zheng', 'Kaiti SC', 'STKaiti', 'KaiTi', serif";
+const FB = "'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif";
 
 // ==================== UTILITY FUNCTIONS ====================
 const U = {

@@ -24,7 +24,7 @@ html, body {
     height: 100svh;
     overflow: hidden;
     background: var(--dark-brown);
-    font-family: 'Noto Serif SC', serif;
+    font-family: 'Noto Serif SC', 'Songti SC', 'STSong', 'SimSun', serif;
     touch-action: none;
     overscroll-behavior: none;
 }
@@ -236,7 +236,7 @@ html, body {
     left: 50%;
     transform: translateX(-50%);
     color: var(--cream);
-    font-family: 'Ma Shan Zheng', serif;
+    font-family: 'Ma Shan Zheng', 'Kaiti SC', 'STKaiti', 'KaiTi', serif;
     font-size: 18px;
     text-align: center;
     max-width: 85%;

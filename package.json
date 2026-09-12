@@ -16,6 +16,8 @@
     "check:color": "node scripts/check-color.mjs",
     "smoke": "node scripts/smoke-v2.mjs",
     "diag:fidelity": "node scripts/diag-diff.mjs",
+    "diag:mobile": "node scripts/diag-mobile.mjs",
+    "shot:classic": "node scripts/shot-classic.mjs",
     "ab": "node scripts/ab-material.mjs",
     "bake": "node scripts/bake.mjs",
     "deploy": "node scripts/deploy.mjs"
