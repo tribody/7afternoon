@@ -1,14 +1,76 @@
 /**
  * 线上冒烟 —— 部署后立刻跑，确认入口没被改坏。
  *
- * 为什么单独一个脚本：
+ * ── 为什么单独一个脚本 ──────────────────────────────────────
  *   根 index.html 是**转发页**，一旦 classic/ 路径不对就是白屏，
  *   而白屏在本地 dev 里永远复现不出来（本地直接访问的是 /v2/）。
  *   这个站唯一的观众是主子的妻子，白屏一次的代价不能用"再推一次"来抵消。
  *
- * 用法：node scripts/verify-live.mjs [origin]
+ * ── 为什么不用 fetch，自己建 TLS 连接 ───────────────────────
+ *   本机 DNS 服务器是 `fe80::1`（IPv6 链路本地），对刚续费/刚改过的域名
+ *   常年解析不到，会误报 `ENOTFOUND` —— 而域名本身在公共 DNS 上是好的。
+ *   所以这里显式指定公共 DNS 解析，再把 IP 喂给 https 连接
+ *   （SNI 仍用域名，证书校验不受影响）。
+ *
+ * ── 用法 ────────────────────────────────────────────────────
+ *   node scripts/verify-live.mjs
+ *   node scripts/verify-live.mjs https://tribody.github.io/7afternoon
+ *   VERIFY_DNS=8.8.8.8 node scripts/verify-live.mjs
  */
-const origin = process.argv[2] || 'https://home.sjtunix.cn';
+import dns from 'node:dns';
+import https from 'node:https';
+import net from 'node:net';
+
+const origin = (process.argv[2] || 'https://home.sjtunix.cn').replace(/\/$/, '');
+const { hostname: host } = new URL(origin);
+
+const DNS_SERVERS = (process.env.VERIFY_DNS || '223.5.5.5,119.29.29.29,8.8.8.8').split(',').map((s) => s.trim());
+const resolver = new dns.promises.Resolver();
+resolver.setServers(DNS_SERVERS);
+
+// 解析一次就缓存：整轮验证都连同一个 IP，避免中途漂移导致结果不自洽
+let resolvedIp = null;
+const lookup = (hostname, opts, cb) => {
+  // ⚠️ Node 在 `options.all === true` 时期望回调给的是**数组**，
+  //    给字符串会报 ERR_INVALID_IP_ADDRESS: undefined
+  const finish = (ip) => (opts && opts.all ? cb(null, [{ address: ip, family: 4 }]) : cb(null, ip, 4));
+
+  if (net.isIP(hostname)) return finish(hostname);
+  if (resolvedIp) return finish(resolvedIp);
+  resolver
+    .resolve4(hostname)
+    .then((addrs) => {
+      if (!addrs?.length) return cb(new Error(`${hostname} 无任何 A 记录`));
+      resolvedIp = addrs[0];
+      finish(addrs[0]);
+    })
+    .catch((e) => cb(e));
+};
+
+function get(path) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        host,
+        path,
+        method: 'GET',
+        lookup,
+        servername: host, // SNI 仍用域名，证书校验照常
+        headers: { 'User-Agent': 'verify-live/1.0', Accept: '*/*' },
+        timeout: 20000,
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (body += c));
+        res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('请求超时')));
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 const results = [];
 const check = (name, ok, detail = '') => {
@@ -16,14 +78,18 @@ const check = (name, ok, detail = '') => {
   console.log(`${ok ? '✓' : '✗'} ${name}${detail ? ` — ${detail}` : ''}`);
 };
 
-async function get(path) {
-  const url = origin + path;
-  const res = await fetch(url, { redirect: 'manual' });
-  const body = res.status < 300 || res.status === 404 ? await res.text() : '';
-  return { status: res.status, body, headers: res.headers, url };
-}
+console.log(`\n▶ 验证 ${origin}`);
 
-console.log(`\n▶ 验证 ${origin}\n`);
+// 0. 先确认解析本身是通的，否则后面全是噪声
+try {
+  const addrs = await resolver.resolve4(host);
+  check('DNS 可解析（公共 DNS）', addrs.length > 0, `${host} → ${addrs.join(', ')}`);
+} catch (e) {
+  check('DNS 可解析（公共 DNS）', false, `${e.code || e.message}`);
+  console.log('\n❌ 域名解析不通，后续检查无意义，到此为止。');
+  process.exit(1);
+}
+console.log('');
 
 // 1. 根：转发页必须存在，且开关指向 classic
 const root = await get('/');
@@ -35,26 +101,39 @@ check('开关指向 classic（线上入口仍是原版）', m?.[1]?.includes('cl
 // 2. classic 三件套 —— 原版能否独立运行
 for (const f of ['index.html', 'game.js', 'style.css']) {
   const r = await get(`/classic/${f}`);
-  const isHtml = f.endsWith('.html');
   check(
     `classic/${f}`,
     r.status === 200 && r.body.length > 100,
     `HTTP ${r.status}, ${(r.body.length / 1024).toFixed(1)}KB`,
   );
-  if (isHtml && r.status === 200) {
+  if (f.endsWith('.html') && r.status === 200) {
     check(
       '  classic/index.html 引用 style.css 与 game.js',
       /style\.css/.test(r.body) && /game\.js/.test(r.body),
     );
-    check('  classic/index.html 无 Google Fonts（微信不可达）', !/fonts\.googleapis/.test(r.body));
+    // Google Fonts 是**原版自带的**。classic/ 是"零改动冻结基线"，M4 前不动一个字节，
+    // 所以它必然含 Google Fonts —— 这是预期，不是失败，只报告。
+    // 真正移除它的是 v2（见下）。
+    console.log(
+      `  · classic/index.html 含 Google Fonts：${
+        /fonts\.googleapis/.test(r.body) ? '是（冻结基线原样保留）' : '否'
+      }`,
+    );
   }
 }
 
-// 3. v2 是否已上线（未部署时应为 404，不算失败，只报告）
+// 3. v2 状态 —— 必须区分三种情况，否则会把"源码版占位页"误判成"已上线"
 const v2 = await get('/v2/');
-const v2Up = v2.status === 200;
-console.log(`\n· /v2/ → HTTP ${v2.status}（${v2Up ? '已上线' : '未部署，属预期'}）`);
-if (v2Up) {
+console.log('');
+if (v2.status !== 200) {
+  console.log(`· /v2/ → HTTP ${v2.status}（未部署，属预期）`);
+} else if (/src\/main\.ts/.test(v2.body)) {
+  // 源码入口被推上了 main，所以 /v2/ 是个能打开但跑不起来的占位页
+  console.log('· /v2/ → HTTP 200，但是**源码版占位页**（引用 /src/main.ts，产物未部署）');
+  console.log('  不是入口（TARGET 指向 classic），正常访问碰不到它；');
+  console.log('  要真正上线得先把源码入口 v2/ 与产物 v2/ 拆成两个目录。');
+} else {
+  console.log('· /v2/ → HTTP 200，产物版');
   const js = v2.body.match(/src="\.?\/?([^"]*assets\/[^"]+\.js)"/);
   check('  v2/index.html 引用了打包产物', !!js, js ? js[1] : '没找到 assets/*.js');
   if (js) {
@@ -63,10 +142,8 @@ if (v2Up) {
   }
   const man = await get('/bake/s3.manifest.json');
   check('  烘焙清单可访问', man.status === 200, `HTTP ${man.status}`);
+  check('  v2 已移除 Google Fonts（微信不可达）', !/fonts\.googleapis/.test(v2.body));
 }
-
-// 4. CNAME 生效 —— 自定义域名掉了等于站点消失
-check('CNAME 已生效（同源返回 200）', root.status === 200, origin);
 
 const bad = results.filter((r) => !r.ok);
 console.log(`\n${bad.length === 0 ? '✅' : '❌'} ${results.length - bad.length}/${results.length} 通过`);
