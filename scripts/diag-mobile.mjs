@@ -23,6 +23,12 @@ import { chromium } from 'playwright';
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, 'dist');
 
+// --live：打线上（必须绕开本机 DNS —— 本机 DNS 是 fe80::1，不可信）
+// 默认：打本地 dist
+const LIVE = process.argv.includes('--live');
+const HOST = 'home.sjtunix.cn';
+const PAGES_IP = '185.199.108.153';
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -54,7 +60,7 @@ const server = createServer(async (req, res) => {
 });
 
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
-const base = `http://127.0.0.1:${server.address().port}`;
+const base = LIVE ? `https://${HOST}` : `http://127.0.0.1:${server.address().port}`;
 
 const FONT_RE = /fonts\.(googleapis|gstatic)\.com/;
 const BUDGET_MS = 30000; // 手机用户等 30 秒 = 已经判死刑
@@ -65,7 +71,9 @@ const WECHAT_UA =
   '(KHTML, like Gecko) Mobile/15E148 MicroMessenger/8.0.40(0x18002832) NetType/WIFI Language/zh_CN';
 
 async function run(label, mode, path) {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch(
+    LIVE ? { args: [`--host-resolver-rules=MAP ${HOST} ${PAGES_IP}`] } : {},
+  );
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     deviceScaleFactor: 3,
@@ -157,14 +165,21 @@ async function run(label, mode, path) {
   return { label, booted: gameBooted, ms: elapsed, marks };
 }
 
-console.log('▶ 手机端入口诊断（微信 UA / 390×844 @3x / 本地 dist 服务）');
-console.log('  怀疑：classic/index.html 的 Google Fonts 阻塞样式表\n');
-
 const results = [];
-results.push(await run('A · fonts 可达（对照）', 'ok', '/classic/'));
-results.push(await run('B · fonts 黑洞（大陆真实形态）', 'hang', '/classic/'));
-results.push(await run('C · fonts 立即失败（修复后形态）', 'abort', '/classic/'));
-results.push(await run('D · v2 产物页（fonts 黑洞）', 'hang', '/v2/'));
+
+if (LIVE) {
+  console.log(`▶ 线上实测：${base}（Chromium host-resolver 直连 ${PAGES_IP}，绕开本机 DNS）`);
+  console.log('  网络条件：fonts 黑洞（中国大陆真实形态）\n');
+  results.push(await run('线上 · 根路径（含转发页跳转）', 'hang', '/'));
+  results.push(await run('线上 · 直达 /classic/', 'hang', '/classic/'));
+} else {
+  console.log('▶ 手机端入口诊断（微信 UA / 390×844 @3x / 本地 dist 服务）');
+  console.log('  怀疑：classic/index.html 的 Google Fonts 阻塞样式表\n');
+  results.push(await run('A · fonts 可达（对照）', 'ok', '/classic/'));
+  results.push(await run('B · fonts 黑洞（大陆真实形态）', 'hang', '/classic/'));
+  results.push(await run('C · fonts 立即失败（修复后形态）', 'abort', '/classic/'));
+  results.push(await run('D · v2 产物页（fonts 黑洞）', 'hang', '/v2/'));
+}
 
 server.close();
 

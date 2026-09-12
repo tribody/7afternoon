@@ -111,13 +111,24 @@ for (const f of ['index.html', 'game.js', 'style.css']) {
       '  classic/index.html 引用 style.css 与 game.js',
       /style\.css/.test(r.body) && /game\.js/.test(r.body),
     );
-    // Google Fonts 是**原版自带的**。classic/ 是"零改动冻结基线"，M4 前不动一个字节，
-    // 所以它必然含 Google Fonts —— 这是预期，不是失败，只报告。
-    // 真正移除它的是 v2（见下）。
-    console.log(
-      `  · classic/index.html 含 Google Fonts：${
-        /fonts\.googleapis/.test(r.body) ? '是（冻结基线原样保留）' : '否'
-      }`,
+    // 这条是线上故障的防回归闸门 —— 别删。
+    //
+    // 原版自带 fonts.googleapis.com 的**阻塞 stylesheet**。该域名在中国大陆
+    // 不可达且是"挂起"而非快速失败：浏览器因此不触发 load，而 game.js 的入口
+    // 就写在 window load 里，页面永久停在 loading。曾实测挂起 30s 无任何进展。
+    // 修法是整个删掉外链、退系统字体栈。所以线上 classic 必须**不含任何外网依赖**。
+    // ⚠️ 必须先剥掉 HTML 注释再检测 —— 修复说明就写在注释里，
+    // 里面明明白白写着 "fonts.googleapis.com"，直接正则会自己把自己判失败。
+    const htmlStripped = r.body.replace(/<!--[\s\S]*?-->/g, '');
+    check(
+      '  classic/index.html 无外网字体依赖（防永久卡死）',
+      !/fonts\.(googleapis|gstatic)\.com/.test(htmlStripped),
+      /fonts\.(googleapis|gstatic)\.com/.test(htmlStripped) ? '仍含 Google Fonts ← 会卡死' : '干净',
+    );
+    check(
+      '  classic/index.html 无任何外部 http(s) 资源',
+      !/https?:\/\//.test(htmlStripped),
+      '注释里的说明文字已排除',
     );
   }
 }
