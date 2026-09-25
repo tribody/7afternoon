@@ -11,12 +11,25 @@
  * 注意：bake/ 不在其中 —— 烘焙工装只在开发期用（走 scripts/bake.mjs 自带的
  * 静态服务器），刻意不进产物。
  */
-import { rmSync, mkdirSync, existsSync, copyFileSync, readdirSync, statSync } from 'node:fs';
+import { rmSync, mkdirSync, existsSync, copyFileSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const pub = join(root, 'public');
+
+/**
+ * 构建版本号 —— 破 X5 缓存的**唯一真源**。
+ *
+ * X5（微信内核）对不带查询串的 URL 缓存极其激进，改了内容照样给旧的。
+ * 所以每个会发给手机的资源都必须带 ?v=BUILD：
+ *   - 根转发页跳转目标  → ./classic/?v=BUILD
+ *   - classic/index.html 引用的 game.js / style.css → 同样 stamp 上 BUILD
+ *     （否则 X5 缓存了 /classic/game.js 后，index 再新、JS 永远是旧的）
+ *
+ * ⚠️ 每次改动 classic/ 或转发页都要 bump 这个值，否则等于没改。
+ */
+const BUILD = '20260925a';
 
 const fail = (msg) => {
   console.error(`\n✗ prebuild 失败：${msg}\n`);
@@ -42,20 +55,35 @@ function copyDir(src, dst) {
 rmSync(pub, { recursive: true, force: true });
 mkdirSync(pub, { recursive: true });
 
-// 1) 转发页（回滚开关）
+// 1) 转发页（回滚开关）—— BUILD 以本文件为真源，写回转发页保持两处一致
 const forward = join(root, 'index.html');
 if (!existsSync(forward)) fail('根目录缺少 index.html（转发页）');
-copyFileSync(forward, join(pub, 'index.html'));
+{
+  const src = readFileSync(forward, 'utf8');
+  if (!/var BUILD = '[\w-]+';/.test(src)) fail('转发页缺少 var BUILD 声明，破缓存链路会断');
+  writeFileSync(join(pub, 'index.html'), src.replace(/var BUILD = '[\w-]+';/, `var BUILD = '${BUILD}';`));
+}
 
 // 2) CNAME —— 缺了它自定义域名直接失效
 const cname = join(root, 'CNAME');
 if (!existsSync(cname)) fail('缺少 CNAME，自定义域名 home.sjtunix.cn 会失效');
 copyFileSync(cname, join(pub, 'CNAME'));
 
-// 3) 原版冻结副本
+// 3) 原版冻结副本 —— index.html 的资源引用 stamp 上 ?v=BUILD（破 X5 资源缓存），
+//    game.js / style.css 本身字节不变，HTML 是拼装产物
 const classic = join(root, 'classic');
 if (!existsSync(classic)) fail('缺少 classic/，原版将无法作为灰度对照运行');
 copyDir(classic, join(pub, 'classic'));
+{
+  const p = join(pub, 'classic', 'index.html');
+  const src = readFileSync(p, 'utf8');
+  const stamped = src
+    .replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`)
+    .replace(/src="game\.js"/, `src="game.js?v=${BUILD}"`);
+  if (stamped === src) fail('classic/index.html 未找到 style.css / game.js 引用，stamp 失败');
+  if (/game\.js\?/.test(src) && !/game\.js\?v=/.test(src)) fail('game.js 已带非标准查询串，需人工确认');
+  writeFileSync(p, stamped);
+}
 
 for (const f of ['index.html', 'CNAME', 'classic/index.html', 'classic/game.js', 'classic/style.css']) {
   if (!existsSync(join(pub, f))) fail(`public/${f} 未生成`);
