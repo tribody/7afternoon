@@ -12,7 +12,64 @@
  * 但模块可以直接以裸标识符访问；函数声明（drawBoy 等）则同时挂在 window。
  */
 import { bakeS3 } from './scenes/s3.js';
+import { bakeS10 } from './scenes/s10.js';
 import { tightBBox, withSeed, SEED_PAPER, createSink } from './layerSink.js';
+
+/**
+ * 场景注册表 —— M2 量产每加一场，就往这里加一条。
+ *
+ * hook 用来处理"没有烘进贴图、但真值里有"的运行时元素：
+ *   klass        场景类（直接 new 出来跑原版 render 当真值）
+ *   prepTruth    真值准备（喂同一批随机数据，锁两次随机的差异）
+ *   animate      推进若干帧让运行时元素就位（S3 的气泡要收敛）
+ *   refState     记录真值那一帧的实际状态，合成图按它摆放
+ *   blitExtraAt  在某层**之后**插入额外绘制（绘制序敏感）
+ *   blitExtra    额外绘制本体
+ */
+const SCENES = {
+  s3: {
+    bake: bakeS3,
+    klass: () => S3,
+    prepTruth(scene, last) {
+      scene.stars = last.stars;
+    },
+    animate(scene) {
+      for (let i = 0; i < 60 * 4; i++) scene.update(1 / 60); // 让 4 个气泡就位
+    },
+    refState(scene) {
+      return { bubbles: scene.bubbles.map((b) => ({ x: b.x, y: b.y, text: b.text })) };
+    },
+    blitExtraAt: 'paper',
+    blitExtra(g, last, ref, w) {
+      const bub = last.specs.find((s) => s.name === 'bubbles');
+      const bubSink = last.sinks.bubbles;
+      for (const b of ref.bubbles) {
+        g.save();
+        g.filter = 'blur(0.5px)';
+        g.drawImage(
+          bubSink.canvas,
+          b.x + bub.dx,
+          b.y + bub.dy,
+          bubSink.canvas.width / last.scale,
+          bubSink.canvas.height / last.scale,
+        );
+        g.restore();
+        g.save();
+        g.fillStyle = C.darkBrown;
+        g.font = `14px ${FB}`;
+        g.textAlign = 'center';
+        g.fillText(b.text, b.x, b.y + 2);
+        g.restore();
+      }
+    },
+  },
+  s10: {
+    bake: bakeS10,
+    klass: () => S10,
+    // render 里没有随 t 变化的东西（粒子是 ps.spawn 出来的，不在 render 内），
+    // 直接 enter 后 render 即真值
+  },
+};
 
 const logEl = document.getElementById('log');
 const say = (s) => {
@@ -38,6 +95,8 @@ function injectScript(src) {
 
 /** 上一次烘焙的结果（含各层 canvas），供 getLayerDataURL 取图 */
 let last = null;
+/** 上一个跑的场景 id —— renderPair 要按同一场景取 hook */
+let lastId = 's3';
 
 const boot = (async () => {
   await afterLoad();
@@ -66,10 +125,15 @@ const boot = (async () => {
 window.__bake = {
   boot,
 
-  /** 跑一次 S3 烘焙，返回元数据（图另取，避免一次传十几 MB） */
-  run(opts) {
-    const r = bakeS3(opts);
+  /** 跑一次场景烘焙，返回元数据（图另取，避免一次传十几 MB） */
+  run(opts = {}) {
+    const id = opts.scene ?? 's3';
+    const entry = SCENES[id];
+    if (!entry) throw new Error(`未知场景：${id}（已注册：${Object.keys(SCENES).join(', ')}）`);
+
+    const r = entry.bake(opts);
     last = r;
+    lastId = id;
 
     const layers = r.specs.map((spec) => {
       const sink = r.sinks[spec.name];
@@ -164,8 +228,11 @@ window.__bake = {
    * 逐像素比会淹没掉真正的问题。分块均值能过滤掉这类噪声，
    * 只暴露"整块不对"的结构性错误（缺层、错位、比例错）。
    */
-  renderPair(designW, designH, scale = 2, blocks = 16) {
+  renderPair(designW, designH, scale = 2, blocks = 16, sceneId = null) {
     if (!last) throw new Error('先调 run()');
+
+    const id = sceneId ?? lastId;
+    const hook = SCENES[id] ?? {};
 
     const w = designW;
     const h = designH;
@@ -183,15 +250,18 @@ window.__bake = {
 
     // —— 真值 ——
     const O = mk();
-    /** 真值里气泡的最终状态，合成图按它摆放 —— 消除"收敛程度不同"这个假差异 */
-    let refBubbles = [];
+    /** 真值里运行时元素的最终状态，合成图按它摆放 —— 消除"收敛程度不同"这个假差异 */
+    let refState = null;
     {
       const g = { w, h, ps: new ParticleSystem() };
 
-      // 星场：复用烘焙时那批，否则 40 颗星的随机位置差异会盖住真问题
-      const scene = new S3(g);
+      // ⚠️ klass 是 getter 函数（延迟取值：注入 game.js 之后才有 S3/S10 这些类），
+      //    必须**调用**它拿到类本身再 new —— 直接 new 那个箭头函数会报
+      //    "is not a constructor"
+      const Klass = hook.klass ? hook.klass() : S3;
+      const scene = new Klass(g);
       scene.enter();
-      scene.stars = last.stars;
+      hook.prepTruth?.(scene, last);
 
       // 纸纹：原版内部走 Math.random 撒 300 点，必须锁成与烘焙同一批
       const origPaper = window.drawPaperTexture;
@@ -203,20 +273,18 @@ window.__bake = {
       U.T = 0;
 
       try {
-        for (let i = 0; i < 60 * 4; i++) scene.update(1 / 60); // 让 4 个气泡就位
+        hook.animate?.(scene); // 让运行时元素（气泡等）就位
         scene.render(O.g);
       } finally {
         window.drawPaperTexture = origPaper;
         U.T = origT;
       }
 
-      refBubbles = scene.bubbles.map((b) => ({ x: b.x, y: b.y, text: b.text }));
+      refState = hook.refState?.(scene) ?? {};
     }
 
     // —— 分层合成 ——
-    // 与 classic/game.js:1345-1387 的绘制序对齐：
-    //   drawSky → wcWash(光晕) → drawPaperTexture → drawStars → 烟花 →
-    //   气泡 ×4（底 + 文字）→ 手机暗条 → drawBoy
+    // 严格按场景配置里的**层顺序**叠回去；multiply 层的序不能乱（见场景文件注释）
     const Cc = mk();
     {
       const g = Cc.g;
@@ -235,36 +303,11 @@ window.__bake = {
         g.restore();
       };
 
-      blit('sky');
-      blit('mid');
-      blit('paper');
-
-      // 气泡：位置是运行时状态，不烘。按**真值那一帧的实际坐标**摆放，
-      // 而不是按公式算收敛终值 —— 后 2 个气泡在 4 秒内其实还没收敛到位，
-      // 用终值会让比对凭空多出几十的差值。
-      // 贴图自身的偏移 / 尺寸一律取自 spec（裁剪后原点会变，不能再硬编码）。
-      const bub = last.specs.find((s) => s.name === 'bubbles');
-      const bubSink = last.sinks.bubbles;
-      for (const b of refBubbles) {
-        g.save();
-        g.filter = 'blur(0.5px)';
-        g.drawImage(
-          bubSink.canvas,
-          b.x + bub.dx,
-          b.y + bub.dy,
-          bubSink.canvas.width / last.scale,
-          bubSink.canvas.height / last.scale,
-        );
-        g.restore();
-        g.save();
-        g.fillStyle = C.darkBrown;
-        g.font = `14px ${FB}`;
-        g.textAlign = 'center';
-        g.fillText(b.text, b.x, b.y + 2);
-        g.restore();
+      for (const spec of last.specs) {
+        // runtimePlaced 层是"按运行时坐标摆放的素材"，由 blitExtra 画，跳过整层
+        if (!spec.runtimePlaced) blit(spec.name);
+        if (hook.blitExtraAt === spec.name) hook.blitExtra?.(g, last, refState, w);
       }
-
-      blit('actors');
     }
 
     // —— 分块均值差 ——

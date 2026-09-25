@@ -159,14 +159,22 @@ const boot = await page.evaluate(() => window.__bake.boot);
 console.log(`✓ 引导完成：绘制函数 ${Object.keys(boot.probe).length} 个就绪，调色板 ${boot.palette} 键`);
 
 // ── 烘焙 ────────────────────────────────────────────────
-const result = await page.evaluate(() => window.__bake.run());
-console.log(`✓ 烘焙完成：${result.layers.length} 层\n`);
+// M2 量产节奏：每做完一场，往这里加一个 id（对应 bake/main.js 的 SCENES 注册表）
+const SCENES = ['s3', 's10'];
 
 await mkdir(outDir, { recursive: true });
 
+/** 每场一行汇总，最后给 GATE-C 用 */
+const sceneStats = [];
+
+for (const id of SCENES) {
+console.log(`\n══════════════════ 烘焙场景 ${id} ══════════════════`);
+const result = await page.evaluate((s) => window.__bake.run({ scene: s }), id);
+console.log(`✓ 烘焙完成：${result.layers.length} 层\n`);
+
 // ── 逐层取图、落盘、算 SHA ───────────────────────────────
 const manifest = {
-  scene: 'S3',
+  scene: id.toUpperCase(),
   design: result.design,
   scale: result.scale,
   overdraw: result.overdraw,
@@ -204,7 +212,7 @@ for (const meta of result.layers) {
   const buf = Buffer.from(b64, 'base64');
   const hash = createHash('sha256').update(buf).digest('hex').slice(0, 12);
 
-  const file = join(outDir, `s3.${meta.name}.webp`);
+  const file = join(outDir, `${id}.${meta.name}.webp`);
   await writeFile(file, buf);
 
   const vramMb = (meta.w * meta.h * 4) / 1024 / 1024;
@@ -222,7 +230,7 @@ for (const meta of result.layers) {
 
   manifest.layers.push({
     name: meta.name,
-    file: `s3.${meta.name}.webp`,
+    file: `${id}.${meta.name}.webp`,
     // canvas 像素尺寸（显存与 mipmap 用）
     w: meta.w,
     h: meta.h,
@@ -251,12 +259,12 @@ for (const meta of result.layers) {
 
 console.log('└──────────┴────────────┴──────────┴────────────┴────────────┴──────────┘');
 
-await writeFile(join(outDir, 's3.manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+await writeFile(join(outDir, `${id}.manifest.json`), JSON.stringify(manifest, null, 2), 'utf8');
 
 // ── 真值参考图 vs 分层合成图 ─────────────────────────────
 const pair = await page.evaluate(
-  ([dw, dh, sc]) => window.__bake.renderPair(dw, dh, sc, 16),
-  [result.design.w, result.design.h, result.scale],
+  ([dw, dh, sc, s]) => window.__bake.renderPair(dw, dh, sc, 16, s),
+  [result.design.w, result.design.h, result.scale, id],
 );
 
 const savePNG = async (name, dataURL) => {
@@ -268,12 +276,12 @@ const savePNG = async (name, dataURL) => {
   return buf.length;
 };
 
-const origBytes = await savePNG('s3.original.png', pair.original);
-const compBytes = await savePNG('s3.composite.png', pair.composite);
+const origBytes = await savePNG(`${id}.original.png`, pair.original);
+const compBytes = await savePNG(`${id}.composite.png`, pair.composite);
 
-console.log('\n════════ 画面对照（真值 vs 分层合成）════════');
-console.log(`s3.original.png   ${(origBytes / 1024).toFixed(1)} KB   ← 原版 S3 直出，真值`);
-console.log(`s3.composite.png  ${(compBytes / 1024).toFixed(1)} KB   ← 烘焙层按设计坐标叠回`);
+console.log('════════ 画面对照（真值 vs 分层合成）════════');
+console.log(`${id}.original.png   ${(origBytes / 1024).toFixed(1)} KB   ← 原版直出，真值`);
+console.log(`${id}.composite.png  ${(compBytes / 1024).toFixed(1)} KB   ← 烘焙层按设计坐标叠回`);
 console.log(`分块均值差（16×16 块）: 平均 ${pair.diff.mean} / 255`);
 console.log('差异最大的 5 块（结构性问题的指纹）：');
 for (const w of pair.diff.worst) {
@@ -281,18 +289,45 @@ for (const w of pair.diff.worst) {
 }
 console.log('注：粒子与星星闪烁本身时变，故平均差不归零属正常；看的是有没有"整块偏掉"。');
 
-// ── GATE-C 判定 ─────────────────────────────────────────
-const residentVram = sceneVram * RESIDENT_SCENES;
-const allVram = sceneVram * TOTAL_SCENES;
-const bakeTotal = Object.values(result.timings).reduce((a, b) => a + b, 0);
+sceneStats.push({
+  id,
+  vramMB: sceneVram,
+  bytes: totalFileBytes,
+  bakeMs: Object.values(result.timings).reduce((a, b) => a + b, 0),
+  meanDiff: pair.diff.mean,
+  worstBlock: pair.diff.worst[0]?.d ?? 0,
+});
+} // ← end for (const id of SCENES)
 
-console.log('\n════════ GATE-C：烘焙预算 ════════');
-console.log(`单场景显存（全部层同时驻留） : ${sceneVram.toFixed(2)} MB`);
+console.log('\n════════ 逐场汇总 ════════');
+console.log('┌──────┬──────────┬──────────┬──────────┬────────────┬────────────┐');
+console.log('│ 场景 │ 显存(MB) │ 文件(KB) │ 烘焙(ms) │ 平均差/255 │ 最差块 Δ   │');
+console.log('├──────┼──────────┼──────────┼──────────┼────────────┼────────────┤');
+for (const s of sceneStats) {
+  console.log(
+    `│ ${s.id.padEnd(4)} │ ${s.vramMB.toFixed(2).padStart(8)} │ ${(s.bytes / 1024).toFixed(1).padStart(8)} │ ${s.bakeMs.toFixed(1).padStart(8)} │ ${String(s.meanDiff).padStart(10)} │ ${String(s.worstBlock).padStart(10)} │`,
+  );
+}
+console.log('└──────┴──────────┴──────────┴──────────┴────────────┴────────────┘');
+
+// GATE-C 用**已做场景的平均**外推全量，而不是拿单场景数字冒充全片
+const avgVram = sceneStats.reduce((a, s) => a + s.vramMB, 0) / sceneStats.length;
+const avgBytes = sceneStats.reduce((a, s) => a + s.bytes, 0) / sceneStats.length;
+const avgBake = sceneStats.reduce((a, s) => a + s.bakeMs, 0) / sceneStats.length;
+
+// ── GATE-C 判定 ─────────────────────────────────────────
+const residentVram = avgVram * RESIDENT_SCENES;
+const allVram = avgVram * TOTAL_SCENES;
+const bakeTotal = avgBake;
+
+console.log('\n════════ GATE-C：烘焙预算（按已做场景均值外推 13 场）════════');
+console.log(`已做场景：${sceneStats.map((s) => s.id).join(', ')}（${sceneStats.length}/${TOTAL_SCENES}）`);
+console.log(`单场景显存（均值，全部层驻留）: ${avgVram.toFixed(2)} MB`);
 console.log(`  × ${TOTAL_SCENES} 场全驻留            : ${allVram.toFixed(1)} MB   ← 不可能，必须 LRU`);
 console.log(`  × ${RESIDENT_SCENES} 场驻留（计划策略）    : ${residentVram.toFixed(2)} MB   / 预算 ${VRAM_BUDGET_MB} MB`);
-console.log(`单场景 WebP 落盘体积         : ${(totalFileBytes / 1024).toFixed(1)} KB`);
-console.log(`  × ${TOTAL_SCENES} 场全量            : ${((totalFileBytes * TOTAL_SCENES) / 1024 / 1024).toFixed(2)} MB   ← 直接影响下载总量`);
-console.log(`单场景烘焙总耗时             : ${bakeTotal.toFixed(1)} ms`);
+console.log(`单场景 WebP 落盘体积（均值）  : ${(avgBytes / 1024).toFixed(1)} KB`);
+console.log(`  × ${TOTAL_SCENES} 场全量            : ${((avgBytes * TOTAL_SCENES) / 1024 / 1024).toFixed(2)} MB   ← 直接影响下载总量`);
+console.log(`单场景烘焙总耗时（均值）      : ${bakeTotal.toFixed(1)} ms`);
 console.log(`  × ${TOTAL_SCENES} 场              : ${(bakeTotal * TOTAL_SCENES / 1000).toFixed(2)} s`);
 
 const gatePass = residentVram <= VRAM_BUDGET_MB;

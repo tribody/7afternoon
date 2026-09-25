@@ -233,7 +233,10 @@ export function bakeS3(opts = {}) {
     { name: 'sky', sink: skySink, blend: 'normal', fullCover: true, overdraw, parallax: 0.2, staged: null },
     { name: 'mid', ...pick(mid), blend: 'normal', fullCover: false, overdraw: 0, parallax: 0.35 },
     { name: 'actors', ...pick(actors), blend: 'normal', fullCover: false, overdraw: 0, parallax: 0.7 },
-    { name: 'bubbles', ...pick(bubbles), blend: 'normal', fullCover: false, overdraw: 0, parallax: 1 },
+    // runtimePlaced: true —— 这层是"按运行时坐标逐个摆放"的素材贴图，
+    //   合成对照时由 harness 的 blitExtra 负责画，别按整层再贴一次
+    //   （否则画布左上角会多出一个孤零零的气泡，最差块差值暴涨）
+    { name: 'bubbles', ...pick(bubbles), blend: 'normal', fullCover: false, overdraw: 0, parallax: 1, runtimePlaced: true },
     { name: 'paper', sink: paperSink, blend: 'multiply', fullCover: false, overdraw: 0, parallax: 0, staged: null },
   ];
 
@@ -269,6 +272,7 @@ export function bakeS3(opts = {}) {
       fullCover: d.fullCover,
       overdraw: d.overdraw,
       parallax: d.parallax,
+      runtimePlaced: !!d.runtimePlaced,
       note: notes[d.name],
       // 归一化矩形：3D 舞台直接可用
       nx: d.sink.originX / w,
