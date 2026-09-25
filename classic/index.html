@@ -20,7 +20,13 @@
 
       现改为系统字体栈（style.css 两处 + game.js 的 FT/FB），零外网依赖。
     -->
-    <link rel="stylesheet" href="style.css">
+    <!--
+      资源引用带 ?v= —— 破微信 X5 缓存。X5 按完整 URL 缓存，改了 game.js
+      不换 URL 等于没改。⚠️ 每次改 game.js / style.css，必须同步 bump 这两个
+      值和根 index.html 的 BUILD（scripts/prebuild.mjs 会校验一致性，不一致
+      构建直接失败）。
+    -->
+    <link rel="stylesheet" href="style.css?v=20260925a">
 </head>
 <body>
     <canvas id="game-canvas"></canvas>
@@ -51,6 +57,6 @@
         <div id="hint-text" class="hint-text"></div>
     </div>
 
-    <script src="game.js"></script>
+    <script src="game.js?v=20260925a"></script>
 </body>
 </html>

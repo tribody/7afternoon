@@ -69,20 +69,27 @@ const cname = join(root, 'CNAME');
 if (!existsSync(cname)) fail('缺少 CNAME，自定义域名 home.sjtunix.cn 会失效');
 copyFileSync(cname, join(pub, 'CNAME'));
 
-// 3) 原版冻结副本 —— index.html 的资源引用 stamp 上 ?v=BUILD（破 X5 资源缓存），
-//    game.js / style.css 本身字节不变，HTML 是拼装产物
+// 3) 原版冻结副本 —— 原样拷贝。
+//    ⚠️ 资源版本戳（game.js?v= / style.css?v=）**写在源码 classic/index.html 里**，
+//    不在这里生成 —— 因为部署方式是「push main = 发布」，线上跑的就是仓库源码，
+//    生成物 public/ 根本不进仓库。这里只负责**校验** stamp 与 BUILD 一致，
+//    不一致直接 fail（否则 X5 会拿旧 JS，改动等于没上线）。
 const classic = join(root, 'classic');
 if (!existsSync(classic)) fail('缺少 classic/，原版将无法作为灰度对照运行');
 copyDir(classic, join(pub, 'classic'));
 {
-  const p = join(pub, 'classic', 'index.html');
-  const src = readFileSync(p, 'utf8');
-  const stamped = src
-    .replace(/href="style\.css"/, `href="style.css?v=${BUILD}"`)
-    .replace(/src="game\.js"/, `src="game.js?v=${BUILD}"`);
-  if (stamped === src) fail('classic/index.html 未找到 style.css / game.js 引用，stamp 失败');
-  if (/game\.js\?/.test(src) && !/game\.js\?v=/.test(src)) fail('game.js 已带非标准查询串，需人工确认');
-  writeFileSync(p, stamped);
+  const src = readFileSync(join(root, 'classic', 'index.html'), 'utf8');
+  const stamped = [...src.matchAll(/(?:src|href)="((?:game\.js|style\.css)\?v=([\w-]+))"/g)];
+  if (stamped.length < 2) {
+    fail('classic/index.html 缺少资源版本戳（game.js?v= / style.css?v=）——\n' +
+         '     X5 会缓存旧资源。请给两处引用补上 ?v=（值与根 index.html 的 BUILD 一致）');
+  }
+  for (const [, ref, ver] of stamped) {
+    if (ver !== BUILD) {
+      fail(`资源版本戳不一致：${ref}（${ver}）≠ BUILD（${BUILD}）。\n` +
+           '     请同步 bump classic/index.html 与根 index.html 的版本号');
+    }
+  }
 }
 
 for (const f of ['index.html', 'CNAME', 'classic/index.html', 'classic/game.js', 'classic/style.css']) {
