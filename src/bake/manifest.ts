@@ -53,11 +53,48 @@ export interface BakeManifest {
 /** 清单里各层的绘制次序（从后到前），与 classic/game.js 的绘制序对齐 */
 export const LAYER_ORDER = ['sky', 'mid', 'paper', 'actors', 'bubbles'] as const;
 
+/**
+ * 每个场景的**运行时装配配置**。
+ *
+ * 层序不能共用一张表：S10 的层集合（glow/ground/sun/clouds）与 S3 完全不同，
+ * 而 `renderOrder` 决定叠加顺序 —— 拿错表会让 multiply 层（paper）乘错对象
+ * （S10 的 paper 必须只乘到 sky+glow 上，压在 ground 之前）。
+ *
+ * ⚠️ 各场景的 order 必须与烘焙侧 `bake/scenes/<id>.js` 的 layers 数组顺序
+ * （= 原版 render() 的绘制序）逐项一致，冒烟测试的画面保真比对靠它兜底。
+ */
+export interface SceneRuntimeConfig {
+  /** 层绘制次序（从后到前），与烘焙 spec 的 layers 顺序一致 */
+  order: readonly string[];
+  /** 不自动满幅铺放、由场景自己 addSprite 的层（S3 的气泡） */
+  runtimePlaced: readonly string[];
+}
+
+export const SCENE_RUNTIME: Record<string, SceneRuntimeConfig> = {
+  s3: { order: LAYER_ORDER, runtimePlaced: ['bubbles'] },
+  s10: {
+    order: ['sky', 'glow', 'paper', 'ground', 'sun', 'clouds', 'actors'],
+    runtimePlaced: [],
+  },
+};
+
+/** 按场景 id（不区分大小写）取运行时配置，未知场景回落 S3 的表并给出可定位的报错 */
+export function sceneRuntime(sceneField: string): SceneRuntimeConfig {
+  const key = sceneField.toLowerCase();
+  const cfg = SCENE_RUNTIME[key];
+  if (!cfg) throw new Error(`SCENE_RUNTIME 里没有场景「${sceneField}」—— 新场景烘焙后必须补这张表`);
+  return cfg;
+}
+
 /** 每层的深度（归一化舞台里的 z）。气泡必须排在男孩之前，才可能被命中 */
 export const LAYER_Z: Record<string, number> = {
   sky: -8,
+  glow: -7.5,
   mid: -6,
   paper: -5,
+  ground: -5.5,
+  sun: -6.5,
+  clouds: -4.5,
   actors: -4,
   bubbles: -2,
 };

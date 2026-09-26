@@ -432,10 +432,10 @@ const completion = await page.evaluate(() => {
   const hits = pos.map((p) => v.tapAt(p.x, p.y));
   return {
     hits,
-    tapped: v.s3.tapCount,
-    done: v.s3.done,
-    text: v.s3.text,
-    hint: v.s3.hint,
+    tapped: v.scene.tapCount,
+    done: v.scene.done,
+    text: v.scene.text,
+    hint: v.scene.hint,
   };
 });
 
@@ -451,8 +451,83 @@ check('提示文案已清空', completion.hint === '', `"${completion.hint}"`);
 // this.t > 1 才置 done —— 所以点完必须再等 1 秒以上才能判 done。
 // 这不是 bug，是原版的节奏设计（留一拍给"钟声"落定）。
 await page.waitForTimeout(1300);
-const doneState = await page.evaluate(() => ({ done: window.__v2.s3.done }));
+const doneState = await page.evaluate(() => ({ done: window.__v2.scene.done }));
 check('全部点完后 1.3s 内场景判定 done', doneState.done === true);
+
+// ── 4b. S10「夕阳和解」闭环（?scene=s10）────────────────────
+// M2 的第二条试点：验证「配置 → 贴图 → 能跑」在 S3 之外可复跑。
+// 原版 game.js:1798-1831：无命中测试、任意点按计数、点满 6 次换文案、
+// t 归零后再等 1.5s 判 done。
+console.log('\n════════ S10 闭环（?scene=s10）════════');
+{
+  const p10 = await browser.newPage({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 });
+  const errs10 = [];
+  const cons10 = [];
+  p10.on('pageerror', (e) => errs10.push(e.message));
+  p10.on('console', (m) => {
+    if (m.type() === 'error') cons10.push(m.text());
+  });
+  await p10.goto(`${base}/v2/?scene=s10`, { waitUntil: 'load', timeout: 30000 });
+  let booted10 = true;
+  try {
+    await p10.waitForFunction(() => window.__v2 != null, null, { timeout: 25000 });
+  } catch {
+    booted10 = false;
+  }
+  check('S10: 页面无 pageerror', errs10.length === 0, errs10.slice(0, 2).join(' | '));
+  check('S10: 控制台无 error', cons10.length === 0, cons10.slice(0, 2).join(' | '));
+  check('S10: 运行时完成装配', booted10);
+
+  if (booted10) {
+    const m10 = await p10.evaluate(() => {
+      const v = window.__v2;
+      return {
+        id: v.sceneId,
+        layers: v.manifest.layers.map((l) => l.name),
+        stage: v.layerNames(),
+        vram: v.stage.estimateTextureMB(),
+      };
+    });
+    check('S10: 装配的是 s10', m10.id === 's10', String(m10.id));
+    check('S10: 清单含 7 层', m10.layers.length === 7, m10.layers.join(','));
+    check('S10: 舞台实际装配 7 层', m10.stage.length === 7, m10.stage.join(','));
+    check('S10: 纹理显存 ≤ 96MB 预算', m10.vram <= 96, `${m10.vram.toFixed(2)}MB`);
+
+    // 保真：冻结镜头 → 帧内读回 → 与烘焙合成图 16×16 分块比对。
+    // 本场点按前画面 = 纯烘焙层（无 DOM 叠加物），不应屏蔽任何块。
+    await p10.evaluate(() => window.__v2.setCameraEnabled(false));
+    await p10.waitForTimeout(120);
+    const f10 = await p10.evaluate(() => window.__v2.captureFrame());
+    const f10b64 = f10.slice(f10.indexOf(',') + 1);
+    await writeFile(join(outDir, 'v2.s10.frame.png'), Buffer.from(f10b64, 'base64'));
+    const ref10 = (await readFile(join(outDir, 's10.composite.png'))).toString('base64');
+    const fid10 = await p10.evaluate(compareFn, { liveB64: f10b64, refB64: ref10 });
+    check(
+      'S10: 画面平均差 ≤ 8/255（vs 烘焙合成）',
+      fid10.meanAll <= 8,
+      `全部块 ${fid10.meanAll}  最差 Δ${fid10.worstOutside.d}@(${fid10.worstOutside.bx},${fid10.worstOutside.by})`,
+    );
+
+    // 交互：game.js:1825 没有 hit test —— 任意点按都算。
+    // 点 6 次（换着位置点，等价于原版"轻触飘散的光点"的自由度）
+    const tap10 = await p10.evaluate(() => {
+      const v = window.__v2;
+      const { w, h } = v.viewport();
+      for (let i = 0; i < 6; i++) v.tapAt(w * (0.2 + 0.1 * i), h * 0.4);
+      const s = v.scene;
+      return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
+    });
+    check('S10: 6 次点按全部计数', tap10.taps === 6, `实得 ${tap10.taps}`);
+    check('S10: 点满后文案与原版一致', tap10.text === '余生很长，请多指教', `"${tap10.text}"`);
+    check('S10: 提示文案已清空', tap10.hint === '', `"${tap10.hint}"`);
+
+    // 原版 game.js:1803：t 在点满时归零，t > 1.5 才置 done
+    await p10.waitForTimeout(1700);
+    const done10 = await p10.evaluate(() => window.__v2.scene.done);
+    check('S10: 点满后 1.7s 内场景判定 done', done10 === true);
+  }
+  await p10.close();
+}
 
 // ── 5. 帧统计（仅报告：headless 是软件光栅，不代表真机）──────
 const perf = await page.evaluate(() => window.__v2.overlay.snapshot());

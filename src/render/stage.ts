@@ -28,7 +28,7 @@
  */
 import * as THREE from 'three';
 import { createRenderer, PAPER_BG } from '../core/renderer';
-import { LAYER_ORDER, LAYER_Z } from '../bake/manifest';
+import { LAYER_Z, sceneRuntime } from '../bake/manifest';
 import type { LoadedScene } from '../bake/loader';
 import type { BakedLayer } from '../bake/manifest';
 
@@ -76,6 +76,8 @@ export class Stage {
   private textures = new Map<string, THREE.Texture>();
   private disposables: Array<{ dispose(): void }> = [];
   private seq = 0;
+  /** 当前装配场景的层序（mount 时按 SCENE_RUNTIME 更新），addSprite 的 renderOrder 用 */
+  private order: readonly string[] = [];
 
   private raycaster = new THREE.Raycaster();
   private logicPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
@@ -119,17 +121,25 @@ export class Stage {
   mount(loaded: LoadedScene): void {
     this.clear();
 
-    for (const name of LAYER_ORDER) {
+    // 层序是**每场景一张表**（manifest.ts 的 SCENE_RUNTIME）：S10 的层集合
+    // 与 S3 不同，用错表 multiply 层会乘错对象。运行时叠放序必须与烘焙
+    // spec 的 layers 顺序（= 原版 render() 绘制序）一致。
+    const rt = sceneRuntime(loaded.manifest.scene);
+    const orderOf = (name: string): number => rt.order.indexOf(name);
+    this.order = rt.order;
+
+    for (const name of rt.order) {
       const entry = loaded.layers.get(name);
       if (!entry) continue;
       this.byLayer.set(name, entry.spec);
       this.textures.set(name, entry.texture);
 
-      // 只对"满幅层"自动铺一张；气泡这类需要多实例的层交给场景自己 addSprite
-      if (name === 'bubbles') continue;
+      // "运行时按坐标摆放"的层（S3 的气泡）只注册规格，不自动铺满幅；
+      // 实例由场景自己 addSprite 逐个生成
+      if (rt.runtimePlaced.includes(name)) continue;
 
-      const { spec, texture } = entry;
       // 满幅层按 overdraw 放大，才够视差位移时"边缘不露底"
+      const { spec, texture } = entry;
       const grow = spec.overdraw > 0 ? 1 + spec.overdraw : 1;
 
       this.makeItem({
@@ -138,7 +148,7 @@ export class Stage {
         spec: { ...spec, nw: spec.nw * grow, nh: spec.nh * grow },
         cx: spec.nx + spec.nw / 2,
         cy: spec.ny + spec.nh / 2,
-        renderOrder: LAYER_ORDER.indexOf(name as (typeof LAYER_ORDER)[number]),
+        renderOrder: orderOf(name),
       });
     }
 
@@ -223,7 +233,7 @@ export class Stage {
       cx: centerX,
       cy: centerY,
       // 同层内用自增的 renderOrder 保证叠放顺序（都在焦点层 z 上，不会互相遮错）
-      renderOrder: LAYER_ORDER.indexOf(layerName as (typeof LAYER_ORDER)[number]) + this.seq * 0.001,
+      renderOrder: this.order.indexOf(layerName) + this.seq * 0.001,
     });
 
     return {

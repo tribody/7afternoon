@@ -330,6 +330,26 @@ html, body {
     100% { transform: translate(-50%, -50%) scale(1); }
 }
 
+/* 点按涟漪（S10 起用）：原版在点按处爆 sparkle/heart 粒子，
+   粒子系统不进本阶段（manifest.notBaked 有记录），用一圈扩散的
+   暖光代替 —— 纯表现层，"点了有反应"的最低保障。 */
+.tap-ripple {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    margin: -6px 0 0 -6px;
+    border-radius: 50%;
+    border: 2px solid var(--honey);
+    box-shadow: 0 0 10px rgba(255, 200, 87, 0.6);
+    animation: tapRipple 620ms ease-out 1 forwards;
+    pointer-events: none;
+}
+
+@keyframes tapRipple {
+    0% { opacity: 0.9; transform: scale(0.5); }
+    100% { opacity: 0; transform: scale(3.2); }
+}
+
 /* ==================== 真机性能浮层（M1 验收用） ==================== */
 /* 打开：URL 加 ?debug=1，或屏幕左上角连点 3 下。
    不加过渡、不引第三方库，它自己不能成为性能噪声源。 */

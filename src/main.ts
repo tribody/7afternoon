@@ -17,6 +17,7 @@ import { Stage } from './render/stage';
 import { loadScene, type LoadedScene } from './bake/loader';
 import { LoadingScreen } from './ui/loading';
 import { S3 } from './scenes/s3';
+import { S10 } from './scenes/s10';
 import { LogicPlane } from './input/logicPlane';
 import { FrameStats, MAX_DT, pickTier, TIER_PROFILE, type TierDecision } from './core/loop';
 import { PerfOverlay } from './ui/perfOverlay';
@@ -24,6 +25,42 @@ import { PALETTE, runColorCheck } from './dev/colorCheck';
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('check');
+
+/** 本阶段装配哪个场景（M3 接 SceneManager 后由流转状态机接管） */
+const sceneId = params.get('scene') ?? 's3';
+
+/**
+ * 场景注册表：M2 的"配置 → 贴图 → 能跑"闭环入口。
+ *
+ * · logicLayer —— 命中测试的参考层（视差位移补偿用）。S3 选焦点层
+ *   bubbles（parallax=1，纹丝不动）；S10 没有焦点层、也没有命中测试，
+ *   选最靠前的 actors（parallax=0.8）让手指与画面的偏差最小。
+ * · create —— 构造对应的运行时场景实例。
+ */
+const SCENE_DEFS: Record<
+  string,
+  {
+    logicLayer: string;
+    create(stage: Stage, logic: LogicPlane, host: { onText(t: string): void; onHint(h: string): void; onDone(): void }, domLayer: HTMLElement): ActiveScene;
+  }
+> = {
+  s3: { logicLayer: 'bubbles', create: (st, lg, host, dom) => new S3(st, lg, host, dom) },
+  s10: { logicLayer: 'actors', create: (st, lg, host, dom) => new S10(st, lg, host, dom) },
+};
+
+/** 13 场在主循环里需要的最小公共面（M3 的 SceneManager 将直接复用） */
+interface ActiveScene {
+  readonly text: string;
+  readonly hint: string;
+  readonly done: boolean;
+  enter(): void;
+  update(dt: number): void;
+  handlePointerDown(clientX: number, clientY: number): boolean;
+  setPointer(nx: number, ny: number): void;
+  setCameraEnabled(on: boolean): void;
+  /** 命中测试（设计坐标 → 槽位）。无定位热点的场景（S10）恒返回 0 */
+  hitTest(x: number, y: number): number;
+}
 
 function must<T extends Element>(sel: string): T {
   const el = document.querySelector<T>(sel);
@@ -72,7 +109,7 @@ async function boot(): Promise<void> {
 
   let loaded: LoadedScene;
   try {
-    loaded = await loadScene(new THREE.TextureLoader(), 's3', (n, total) =>
+    loaded = await loadScene(new THREE.TextureLoader(), sceneId, (n, total) =>
       loading.setProgress(0.15 + (n / total) * 0.7),
     );
     loading.setProgress(0.9);
@@ -85,10 +122,19 @@ async function boot(): Promise<void> {
 
   stage.mount(loaded);
   overlay.set('vram', `${stage.estimateTextureMB().toFixed(1)}MB`);
+  overlay.set('scene', sceneId);
 
   // ── 逻辑平面与场景 ────────────────────────────────────────
-  const logic = new LogicPlane(stage, 'bubbles');
-  const s3 = new S3(stage, logic, {
+  const sceneDef = SCENE_DEFS[sceneId];
+  if (!sceneDef) {
+    const msg = `未知场景「${sceneId}」（可用：${Object.keys(SCENE_DEFS).join(', ')}）`;
+    await loading.fallback(msg);
+    showFault(msg);
+    return;
+  }
+
+  const logic = new LogicPlane(stage, sceneDef.logicLayer);
+  const scene: ActiveScene = sceneDef.create(stage, logic, {
     onText: (t) => {
       textEl.textContent = t;
     },
@@ -97,7 +143,7 @@ async function boot(): Promise<void> {
       hintEl.style.opacity = h ? '' : '0';
     },
     onDone: () => {
-      /* M1 试点只跑 S3 一场，不做场景流转。M3 接 SceneManager。 */
+      /* M2 仍不做场景流转（单场试跑）。M3 接 SceneManager。 */
     },
   }, bubbleLayer);
 
@@ -134,11 +180,11 @@ async function boot(): Promise<void> {
       started = true;
       uiOverlay.style.display = '';
     }
-    s3.handlePointerDown(e.clientX, e.clientY);
+    scene.handlePointerDown(e.clientX, e.clientY);
   };
 
   const onMove = (e: PointerEvent): void => {
-    s3.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    scene.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
   };
 
   canvas.addEventListener('pointerdown', onDown);
@@ -218,7 +264,7 @@ async function boot(): Promise<void> {
     }
 
     try {
-      s3.update(dt);
+      scene.update(dt);
       stage.render();
     } catch (err) {
       cancelAnimationFrame(rafId);
@@ -239,7 +285,7 @@ async function boot(): Promise<void> {
   };
 
   const readyStart = performance.now();
-  s3.enter();
+  scene.enter();
   rafId = requestAnimationFrame(loop);
 
   const done = await loading.complete();
@@ -247,9 +293,13 @@ async function boot(): Promise<void> {
   overlay.set('boot', `${interactiveMs.toFixed(0)}ms`);
 
   // ── 测试 / 自省钩子 ───────────────────────────────────────
+  // `scene` 是当前装配的场景实例（?scene= 选择，默认 s3）。
+  // bubblePositions 仅 S3 有（S10 无定位热点，返回空数组）。
+  const withBubbles = scene as ActiveScene & { bubbleDesignPositions?: () => Array<{ slot: number; x: number; y: number; tapped: boolean }> };
   (window as unknown as Record<string, unknown>).__v2 = {
     stage,
-    s3,
+    scene,
+    sceneId,
     logic,
     stats,
     overlay,
@@ -260,16 +310,16 @@ async function boot(): Promise<void> {
     designAt: (x: number, y: number) => logic.toDesign(x, y),
     hitTestAt: (clientX: number, clientY: number) => {
       const d = logic.toDesign(clientX, clientY);
-      return { design: d, slot: d.ok ? s3.hitTest(d.x, d.y) : -1 };
+      return { design: d, slot: d.ok ? scene.hitTest(d.x, d.y) : -1 };
     },
-    bubblePositions: () => s3.bubbleDesignPositions(),
-    tapAt: (clientX: number, clientY: number) => s3.handlePointerDown(clientX, clientY),
+    bubblePositions: () => withBubbles.bubbleDesignPositions?.() ?? [],
+    tapAt: (clientX: number, clientY: number) => scene.handlePointerDown(clientX, clientY),
     viewport: () => ({ w: window.innerWidth, h: window.innerHeight, dpr }),
     canvasSize: () => ({ w: canvas.width, h: canvas.height }),
 
     /** 保真排查：整层显隐（消融实验）与镜头冻结 */
     setLayerVisible: (name: string, on: boolean) => stage.setLayerVisible(name, on),
-    setCameraEnabled: (on: boolean) => s3.setCameraEnabled(on),
+    setCameraEnabled: (on: boolean) => scene.setCameraEnabled(on),
     layerNames: () => stage.layerNames(),
 
     /**

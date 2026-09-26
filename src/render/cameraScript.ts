@@ -49,6 +49,25 @@ export const S3_CAMERA: CameraScript = {
   after: 'hold',
 };
 
+/**
+ * S10「夕阳和解」。
+ *
+ * 情绪是"释然"：两人在夕阳下重新站到一起。镜头给一次极慢的横向漂移，
+ * 方向朝太阳（画面中上），像呼吸一样把观众往平静里带。幅度依旧压在
+ * 1.5% 画幅以内 —— 释然不是高潮，是落定。
+ */
+export const S10_CAMERA: CameraScript = {
+  id: 'S10',
+  mood: '朝着夕阳的极慢横移 —— 呼应"一切都释然了"的落定感',
+  keys: [
+    { t: 0, x: 0, y: 0 },
+    { t: 8, x: 0.008, y: -0.004 },
+    { t: 20, x: 0.012, y: -0.006 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
 const easeIO = (v: number) => (v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2);
 
 /** 求某一时刻的镜头偏移（不含指针分量） */
