@@ -454,79 +454,151 @@ await page.waitForTimeout(1300);
 const doneState = await page.evaluate(() => ({ done: window.__v2.scene.done }));
 check('全部点完后 1.3s 内场景判定 done', doneState.done === true);
 
-// ── 4b. S10「夕阳和解」闭环（?scene=s10）────────────────────
-// M2 的第二条试点：验证「配置 → 贴图 → 能跑」在 S3 之外可复跑。
-// 原版 game.js:1798-1831：无命中测试、任意点按计数、点满 6 次换文案、
-// t 归零后再等 1.5s 判 done。
-console.log('\n════════ S10 闭环（?scene=s10）════════');
-{
-  const p10 = await browser.newPage({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 });
-  const errs10 = [];
-  const cons10 = [];
-  p10.on('pageerror', (e) => errs10.push(e.message));
-  p10.on('console', (m) => {
-    if (m.type() === 'error') cons10.push(m.text());
+// ── 4b. M2 各场景闭环（?scene=<id>）─────────────────────────
+// 每场跑同样的三段：装配 → 保真 → 交互。差异只在"交互怎么点、期望什么文案"。
+// 这是 M2 量产的核心验收：一个模板能不能在 13 场上都立住。
+//
+// ⚠️ 保真比对前把 scene.t 设回 3：S0 的信封浮动是 sin(t*2)*8，
+//    而烘焙真值是在 animate 推进 3 秒后定格的那一帧。不对齐 t，
+//    信封会整体偏移几像素，被算成"结构性差异"（假失败）。
+//    其余场次 render 里没有随 t 变化的静态元素，设了也无副作用。
+const CLOSURES = [
+  {
+    id: 's10',
+    layers: 7,
+    note: '无命中测试，任意点按计数，点满 6 次换文案（game.js:1798-1831）',
+    expectText: '余生很长，请多指教',
+    expectTaps: 6,
+    doneWaitMs: 1700,
+  },
+  {
+    id: 's0',
+    layers: 6,
+    note: '信封中心 60px 内命中一次，拆封后 t>1.5 判 done（game.js:1105-1114）',
+    expectText: '一封信，开始了我们的故事',
+    expectTaps: 1,
+    doneWaitMs: 1800,
+  },
+  {
+    id: 's1',
+    layers: 9,
+    note: '两台显示器各 35px 内命中，全连上换文案、t>1 判 done（game.js:1255-1268）',
+    expectText: '产品与开发，缘分就这样开始了...',
+    expectTaps: 2,
+    doneWaitMs: 1400,
+  },
+  {
+    id: 's2',
+    layers: 7,
+    note: '心 50px 内点 3 次换文案，t>1 判 done（game.js:1318-1326）',
+    expectText: '心动，是藏不住的秘密',
+    expectTaps: 3,
+    doneWaitMs: 1400,
+  },
+];
+
+for (const sc of CLOSURES) {
+  console.log(`\n════════ ${sc.id} 闭环（?scene=${sc.id}）════════`);
+  console.log(`  ${sc.note}`);
+
+  const p = await browser.newPage({ viewport: { width: 375, height: 812 }, deviceScaleFactor: 2 });
+  const errs = [];
+  const cons = [];
+  p.on('pageerror', (e) => errs.push(e.message));
+  p.on('console', (m) => {
+    if (m.type() === 'error') cons.push(m.text());
   });
-  await p10.goto(`${base}/v2/?scene=s10`, { waitUntil: 'load', timeout: 30000 });
-  let booted10 = true;
+
+  await p.goto(`${base}/v2/?scene=${sc.id}`, { waitUntil: 'load', timeout: 30000 });
+  let booted = true;
   try {
-    await p10.waitForFunction(() => window.__v2 != null, null, { timeout: 25000 });
+    await p.waitForFunction(() => window.__v2 != null, null, { timeout: 25000 });
   } catch {
-    booted10 = false;
+    booted = false;
   }
-  check('S10: 页面无 pageerror', errs10.length === 0, errs10.slice(0, 2).join(' | '));
-  check('S10: 控制台无 error', cons10.length === 0, cons10.slice(0, 2).join(' | '));
-  check('S10: 运行时完成装配', booted10);
 
-  if (booted10) {
-    const m10 = await p10.evaluate(() => {
-      const v = window.__v2;
-      return {
-        id: v.sceneId,
-        layers: v.manifest.layers.map((l) => l.name),
-        stage: v.layerNames(),
-        vram: v.stage.estimateTextureMB(),
-      };
-    });
-    check('S10: 装配的是 s10', m10.id === 's10', String(m10.id));
-    check('S10: 清单含 7 层', m10.layers.length === 7, m10.layers.join(','));
-    check('S10: 舞台实际装配 7 层', m10.stage.length === 7, m10.stage.join(','));
-    check('S10: 纹理显存 ≤ 96MB 预算', m10.vram <= 96, `${m10.vram.toFixed(2)}MB`);
+  check(`${sc.id}: 页面无 pageerror`, errs.length === 0, errs.slice(0, 2).join(' | '));
+  check(`${sc.id}: 控制台无 error`, cons.length === 0, cons.slice(0, 2).join(' | '));
+  check(`${sc.id}: 运行时完成装配`, booted);
 
-    // 保真：冻结镜头 → 帧内读回 → 与烘焙合成图 16×16 分块比对。
-    // 本场点按前画面 = 纯烘焙层（无 DOM 叠加物），不应屏蔽任何块。
-    await p10.evaluate(() => window.__v2.setCameraEnabled(false));
-    await p10.waitForTimeout(120);
-    const f10 = await p10.evaluate(() => window.__v2.captureFrame());
-    const f10b64 = f10.slice(f10.indexOf(',') + 1);
-    await writeFile(join(outDir, 'v2.s10.frame.png'), Buffer.from(f10b64, 'base64'));
-    const ref10 = (await readFile(join(outDir, 's10.composite.png'))).toString('base64');
-    const fid10 = await p10.evaluate(compareFn, { liveB64: f10b64, refB64: ref10 });
-    check(
-      'S10: 画面平均差 ≤ 8/255（vs 烘焙合成）',
-      fid10.meanAll <= 8,
-      `全部块 ${fid10.meanAll}  最差 Δ${fid10.worstOutside.d}@(${fid10.worstOutside.bx},${fid10.worstOutside.by})`,
-    );
+  if (!booted) {
+    await p.close();
+    continue;
+  }
 
-    // 交互：game.js:1825 没有 hit test —— 任意点按都算。
-    // 点 6 次（换着位置点，等价于原版"轻触飘散的光点"的自由度）
-    const tap10 = await p10.evaluate(() => {
-      const v = window.__v2;
-      const { w, h } = v.viewport();
+  const meta = await p.evaluate(() => {
+    const v = window.__v2;
+    return {
+      id: v.sceneId,
+      layers: v.manifest.layers.map((l) => l.name),
+      stage: v.layerNames(),
+      vram: v.stage.estimateTextureMB(),
+    };
+  });
+  check(`${sc.id}: 装配的是 ${sc.id}`, meta.id === sc.id, String(meta.id));
+  check(
+    `${sc.id}: 清单 / 舞台均装配 ${sc.layers} 层`,
+    meta.layers.length === sc.layers && meta.stage.length === sc.layers,
+    `清单 ${meta.layers.length} / 舞台 ${meta.stage.length}：${meta.stage.join(',')}`,
+  );
+  check(`${sc.id}: 纹理显存 ≤ 96MB 预算`, meta.vram <= 96, `${meta.vram.toFixed(2)}MB`);
+
+  // 保真：冻结镜头 + 对齐 t → 帧内读回 → 与烘焙合成图分块比对
+  await p.evaluate(() => {
+    window.__v2.setCameraEnabled(false);
+    if (typeof window.__v2.scene?.t === 'number') window.__v2.scene.t = 3;
+  });
+  await p.waitForTimeout(140);
+  const frame = await p.evaluate(() => window.__v2.captureFrame());
+  const fb64 = frame.slice(frame.indexOf(',') + 1);
+  await writeFile(join(outDir, `v2.${sc.id}.frame.png`), Buffer.from(fb64, 'base64'));
+
+  const ref = (await readFile(join(outDir, `${sc.id}.composite.png`))).toString('base64');
+  const fid = await p.evaluate(compareFn, { liveB64: fb64, refB64: ref });
+  check(
+    `${sc.id}: 画面平均差 ≤ 8/255（vs 烘焙合成）`,
+    fid.meanAll <= 8,
+    `全部块 ${fid.meanAll}  最差 Δ${fid.worstOutside.d}@(${fid.worstOutside.bx},${fid.worstOutside.by})`,
+  );
+
+  // 交互：按各场的原版判定点完
+  const after = await runInteract(p, sc);
+
+  check(`${sc.id}: 点按计数 = ${sc.expectTaps}`, after.taps === sc.expectTaps, `实得 ${after.taps}`);
+  check(`${sc.id}: 完成文案与原版一致`, after.text === sc.expectText, `"${after.text}"`);
+  check(`${sc.id}: 提示文案已清空`, after.hint === '', `"${after.hint}"`);
+
+  await p.waitForTimeout(sc.doneWaitMs);
+  const done = await p.evaluate(() => window.__v2.scene.done);
+  check(`${sc.id}: 完成条件满足后场景判定 done`, done === true, `等待 ${sc.doneWaitMs}ms`);
+
+  await p.close();
+}
+
+/**
+ * 在页面里执行该场的交互脚本。
+ *
+ * ⚠️ Playwright 的 page.evaluate 不能直接传函数体（会被序列化掉闭包），
+ *    所以按 id 分发 —— 用字符串描述"点哪里、点几次"，保持可读。
+ */
+async function runInteract(p, sc) {
+  return p.evaluate((id) => {
+    const v = window.__v2;
+    const { w, h } = v.viewport();
+    const s = v.scene;
+    if (id === 's10') {
       for (let i = 0; i < 6; i++) v.tapAt(w * (0.2 + 0.1 * i), h * 0.4);
-      const s = v.scene;
-      return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
-    });
-    check('S10: 6 次点按全部计数', tap10.taps === 6, `实得 ${tap10.taps}`);
-    check('S10: 点满后文案与原版一致', tap10.text === '余生很长，请多指教', `"${tap10.text}"`);
-    check('S10: 提示文案已清空', tap10.hint === '', `"${tap10.hint}"`);
-
-    // 原版 game.js:1803：t 在点满时归零，t > 1.5 才置 done
-    await p10.waitForTimeout(1700);
-    const done10 = await p10.evaluate(() => window.__v2.scene.done);
-    check('S10: 点满后 1.7s 内场景判定 done', done10 === true);
-  }
-  await p10.close();
+    } else if (id === 's0') {
+      const pt = s.envelopeDesignPosition();
+      v.tapAt(pt.x, pt.y);
+    } else if (id === 's1') {
+      for (const pt of s.screenDesignPositions()) v.tapAt(pt.x, pt.y);
+    } else if (id === 's2') {
+      const pt = s.heartDesignPosition();
+      for (let i = 0; i < 3; i++) v.tapAt(pt.x, pt.y);
+    }
+    return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
+  }, sc.id);
 }
 
 // ── 5. 帧统计（仅报告：headless 是软件光栅，不代表真机）──────

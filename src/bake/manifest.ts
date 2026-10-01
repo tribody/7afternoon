@@ -71,6 +71,18 @@ export interface SceneRuntimeConfig {
 }
 
 export const SCENE_RUNTIME: Record<string, SceneRuntimeConfig> = {
+  s0: {
+    order: ['sky', 'glow', 'stars', 'paper', 'envelope', 'envelopeOpen'],
+    runtimePlaced: ['envelope', 'envelopeOpen'],
+  },
+  s1: {
+    order: ['sky', 'glow', 'paper', 'ground', 'office', 'screens', 'screenOn', 'link', 'actors'],
+    runtimePlaced: ['screenOn', 'link'],
+  },
+  s2: {
+    order: ['sky', 'glow', 'paper', 'ground', 'cards', 'heart', 'actors'],
+    runtimePlaced: ['heart'],
+  },
   s3: { order: LAYER_ORDER, runtimePlaced: ['bubbles'] },
   s10: {
     order: ['sky', 'glow', 'paper', 'ground', 'sun', 'clouds', 'actors'],
@@ -86,15 +98,24 @@ export function sceneRuntime(sceneField: string): SceneRuntimeConfig {
   return cfg;
 }
 
-/** 每层的深度（归一化舞台里的 z）。气泡必须排在男孩之前，才可能被命中 */
+/** 每层的深度（归一化舞台里的 z）。命中参考层必须排在角色之前，才可能被命中 */
 export const LAYER_Z: Record<string, number> = {
   sky: -8,
   glow: -7.5,
+  stars: -7.6,
   mid: -6,
   paper: -5,
   ground: -5.5,
   sun: -6.5,
   clouds: -4.5,
+  office: -4.6,
+  screens: -2.5,
+  screenOn: -2.4,
+  link: -2.3,
+  cards: -4.4,
+  heart: -2.2,
+  envelope: -2.2,
+  envelopeOpen: -2.1,
   actors: -4,
   bubbles: -2,
 };

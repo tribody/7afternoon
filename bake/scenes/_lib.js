@@ -127,6 +127,11 @@ export function bakeScene(spec, opts = {}) {
         fullCover: true,
         overdraw: L.overdraw ?? overdraw,
         touchesEdge: null,
+        // ⚠️ 必须透传：specs 里 runtimePlaced 是从**这个对象**读的。
+        //    漏了它，runtimePlaced 层会被当成普通层整层贴一遍（画面上多一个
+        //    元素），blitExtra 再画一遍 —— 症状是"该区域整块错，但层数和
+        //    烘焙结果看着都对"。S0 信封 / S1 连接态 / S2 心跳都踩过。
+        runtimePlaced: !!L.runtimePlaced,
         note: L.note ?? '',
       };
     }
@@ -157,6 +162,7 @@ export function bakeScene(spec, opts = {}) {
       parallax,
       fullCover: false,
       overdraw: 0,
+      runtimePlaced: !!L.runtimePlaced, // 同上：漏透传 = 整层误贴
       touchesEdge: r.touchesEdge,
       bbox: r.bbox,
       crop: r.crop,
@@ -178,6 +184,8 @@ export function bakeScene(spec, opts = {}) {
     },
     anchors: spec.anchors ?? {},
     stars: spec.stars ?? null,
+    /** 透传给真值侧的任意运行时数据（锁种子的卡牌旋转等），不进贴图 */
+    extra: spec.extra ?? null,
     diagnostics,
     sinks: Object.fromEntries(built.map((d) => [d.name, d.sink])),
     /** 纯元数据（可序列化）—— 坐标全部用**设计单位** */

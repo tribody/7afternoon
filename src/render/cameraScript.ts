@@ -68,6 +68,54 @@ export const S10_CAMERA: CameraScript = {
   after: 'hold',
 };
 
+/**
+ * S0「星空开场」：镜头从星空缓缓落到那封信上 —— 与 envY 的下落同向，
+ * 但慢得多（信封是"落"，镜头是"跟着看"）。压在 1% 画幅以内。
+ */
+export const S0_CAMERA: CameraScript = {
+  id: 'S0',
+  mood: '跟着信封一起落下来的视线',
+  keys: [
+    { t: 0, x: 0, y: -0.008 },
+    { t: 7, x: 0, y: 0 },
+    { t: 16, x: 0, y: 0.005 },
+  ],
+  pointerGain: 0.014,
+  after: 'hold',
+};
+
+/**
+ * S1「公司初遇」：两台显示器一左一右，镜头几乎不动 —— 这场的主角是
+ * "两个人各自坐着"，任何运动都会破坏那份拘谨。只留一丝横向漂移。
+ */
+export const S1_CAMERA: CameraScript = {
+  id: 'S1',
+  mood: '办公桌上拘谨的静止（只为让画面不是一张照片）',
+  keys: [
+    { t: 0, x: -0.004, y: 0 },
+    { t: 10, x: 0, y: -0.003 },
+    { t: 22, x: 0.004, y: -0.005 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
+/**
+ * S2「剧本杀」：心跳是这场唯一的节拍，镜头只做极轻的下沉，
+ * 让"坐着不敢动"的紧张感成立。幅度比 S1 更小。
+ */
+export const S2_CAMERA: CameraScript = {
+  id: 'S2',
+  mood: '屏住呼吸的极轻下沉',
+  keys: [
+    { t: 0, x: 0, y: 0 },
+    { t: 12, x: 0, y: -0.004 },
+    { t: 24, x: 0, y: -0.006 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
 const easeIO = (v: number) => (v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2);
 
 /** 求某一时刻的镜头偏移（不含指针分量） */

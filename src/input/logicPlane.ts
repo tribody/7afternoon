@@ -105,6 +105,10 @@ export const U = {
   clamp(v: number, mn: number, mx: number): number {
     return Math.max(mn, Math.min(mx, v));
   },
+  /** 原版 game.js:57 —— 连线生长等动画用 */
+  easeOut(t: number): number {
+    return 1 - (1 - t) * (1 - t);
+  },
 };
 
 /** 原版 S3.onDown 的命中半径（CSS 像素），game.js:1390 */

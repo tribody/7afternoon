@@ -350,6 +350,51 @@ html, body {
     100% { opacity: 0; transform: scale(3.2); }
 }
 
+/* 心形涟漪（S2）：原版点在心上时爆 heart 粒子，这里给一点点红 */
+.heart-ripple {
+    border-color: var(--coral);
+    box-shadow: 0 0 12px rgba(255, 139, 123, 0.7);
+}
+
+/* 显示器 badge 文字（S1）：烘死只能一份，走 DOM 才清晰且可配。
+   位置由 JS 每帧按 bob 后的屏幕坐标写 left/top。 */
+.screen-badge {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: rgba(140, 140, 150, 0.75);
+    transition: color 0.3s ease;
+    will-change: left, top;
+}
+
+/* 连上之后：白字（原版 game.js:1214-1217 的 C.white） */
+.screen-badge.is-on {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+/* 拆封闪光（S0）：原版爆 8 个 sparkle 圆点环绕信封，这里用 8 条放射光代替。
+   --a 由 JS 写入每个元素的初始角度。 */
+.spark-burst {
+    position: absolute;
+    width: 3px;
+    height: 14px;
+    margin: -7px 0 0 -1.5px;
+    border-radius: 2px;
+    background: linear-gradient(to bottom, var(--honey), transparent);
+    transform-origin: 50% 100%;
+    animation: sparkBurst 700ms ease-out 1 forwards;
+    pointer-events: none;
+}
+
+@keyframes sparkBurst {
+    0% { opacity: 0.95; transform: rotate(var(--a)) translateY(0) scaleY(0.4); }
+    100% { opacity: 0; transform: rotate(var(--a)) translateY(-34px) scaleY(1.1); }
+}
+
 /* ==================== 真机性能浮层（M1 验收用） ==================== */
 /* 打开：URL 加 ?debug=1，或屏幕左上角连点 3 下。
    不加过渡、不引第三方库，它自己不能成为性能噪声源。 */

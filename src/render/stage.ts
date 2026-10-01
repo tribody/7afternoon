@@ -60,6 +60,9 @@ export interface SpriteHandle {
   setOpacity(a: number): void;
   /** 灰化用（tapped 状态） */
   setTint(color: THREE.ColorRepresentation): void;
+  /** 缩放（心跳、连线展开这类状态动画用） */
+  setScale(sx: number, sy?: number): void;
+  setVisible(on: boolean): void;
   readonly mesh: THREE.Mesh;
 }
 
@@ -249,7 +252,47 @@ export class Stage {
       setTint(color: THREE.ColorRepresentation) {
         item.material.color.set(color);
       },
+      setScale(sx: number, sy: number = sx) {
+        item.mesh.scale.set(sx, sy, 1);
+      },
+      setVisible(on: boolean) {
+        item.mesh.visible = on;
+      },
     };
+  }
+
+  /**
+   * 某层贴图的归一化矩形（runtimePlaced 层按锚点摆位时要用）。
+   *
+   * ⚠️ 贴图是**裁剪到紧致包围盒**的产物，锚点（信封中心、显示器基准点）
+   *    一般**不在**贴图中心 —— 信封的阴影在下方、显示器的支架在下方，
+   *    包围盒整体偏移。按"居中"摆位会让元素整块偏掉（实测最差块 Δ88.8）。
+   */
+  normRectOf(layerName: string): { nx: number; ny: number; nw: number; nh: number } {
+    const s = this.byLayer.get(layerName);
+    if (!s) throw new Error(`层「${layerName}」尚未装配`);
+    return { nx: s.nx, ny: s.ny, nw: s.nw, nh: s.nh };
+  }
+
+  /**
+   * 按锚点摆位：把贴图内 `anchorN`（全画布归一化坐标）这一点，对齐到 `targetN`。
+   *
+   * 用法（S0 信封）：贴图锚点是 design (187.5, 324.8) → anchorN = (0.5, 0.4)，
+   * 目标是运行时随 envY 变化的那个点 → targetN。
+   */
+  addSpriteAt(
+    layerName: string,
+    anchorN: { x: number; y: number },
+    targetN: { x: number; y: number },
+  ): SpriteHandle {
+    const r = this.normRectOf(layerName);
+    // 锚点在贴图内的归一化位置
+    const u = (anchorN.x - r.nx) / r.nw;
+    const v = (anchorN.y - r.ny) / r.nh;
+    // 贴图左上角 = 目标点 - 锚点在该贴图内的偏移
+    const left = targetN.x - u * r.nw;
+    const top = targetN.y - v * r.nh;
+    return this.addSprite(layerName, left + r.nw / 2, top + r.nh / 2);
   }
 
   /** 某一层贴图的归一化尺寸（气泡精灵用） */

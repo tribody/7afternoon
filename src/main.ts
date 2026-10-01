@@ -16,6 +16,9 @@ import * as THREE from 'three';
 import { Stage } from './render/stage';
 import { loadScene, type LoadedScene } from './bake/loader';
 import { LoadingScreen } from './ui/loading';
+import { S0 } from './scenes/s0';
+import { S1 } from './scenes/s1';
+import { S2 } from './scenes/s2';
 import { S3 } from './scenes/s3';
 import { S10 } from './scenes/s10';
 import { LogicPlane } from './input/logicPlane';
@@ -44,6 +47,9 @@ const SCENE_DEFS: Record<
     create(stage: Stage, logic: LogicPlane, host: { onText(t: string): void; onHint(h: string): void; onDone(): void }, domLayer: HTMLElement): ActiveScene;
   }
 > = {
+  s0: { logicLayer: 'envelope', create: (st, lg, host, dom) => new S0(st, lg, host, dom) },
+  s1: { logicLayer: 'screens', create: (st, lg, host, dom) => new S1(st, lg, host, dom) },
+  s2: { logicLayer: 'heart', create: (st, lg, host, dom) => new S2(st, lg, host, dom) },
   s3: { logicLayer: 'bubbles', create: (st, lg, host, dom) => new S3(st, lg, host, dom) },
   s10: { logicLayer: 'actors', create: (st, lg, host, dom) => new S10(st, lg, host, dom) },
 };

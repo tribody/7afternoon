@@ -13,6 +13,9 @@
  */
 import { bakeS3 } from './scenes/s3.js';
 import { bakeS10 } from './scenes/s10.js';
+import { bakeS0 } from './scenes/s0.js';
+import { bakeS1 } from './scenes/s1.js';
+import { bakeS2 } from './scenes/s2.js';
 import { tightBBox, withSeed, SEED_PAPER, createSink } from './layerSink.js';
 
 /**
@@ -68,6 +71,85 @@ const SCENES = {
     klass: () => S10,
     // render 里没有随 t 变化的东西（粒子是 ps.spawn 出来的，不在 render 内），
     // 直接 enter 后 render 即真值
+  },
+
+  s0: {
+    bake: bakeS0,
+    klass: () => S0,
+    prepTruth(scene, last) {
+      scene.stars = last.stars;
+    },
+    // 信封从 envY=-100 lerp 到 h*0.4（dt*2）：推进 3 秒让它收敛，
+    // 否则真值与合成图差着一整个"信封还在屏幕外"的距离
+    animate(scene) {
+      for (let i = 0; i < 60 * 3; i++) scene.update(1 / 60);
+    },
+    refState(scene) {
+      return { envY: scene.envY, float: Math.sin(scene.t * 2) * 8 };
+    },
+    blitExtraAt: 'paper',
+    blitExtra(g, last, ref) {
+      // ⚠️ 贴图是"裁剪到紧致包围盒"的产物，**锚点不在贴图中心**
+      //    （信封的阴影在下方，包围盒偏下）。所以必须先算出锚点在贴图内的
+      //    归一化位置 (u,v)，再按"锚点对齐到目标点"画 —— 假定居中会让
+      //    信封整块偏掉（实测最差块 Δ88.8）。
+      const spec = last.specs.find((s) => s.name === 'envelope');
+      const sink = last.sinks.envelope;
+      const u = (last.anchors.envX - spec.dx) / spec.dw;
+      const v = (last.anchors.envY - spec.dy) / spec.dh;
+      g.drawImage(
+        sink.canvas,
+        last.anchors.envX - u * spec.dw,
+        ref.envY + ref.float - v * spec.dh,
+        spec.dw,
+        spec.dh,
+      );
+    },
+  },
+
+  s1: {
+    bake: bakeS1,
+    klass: () => S1,
+    /**
+     * ⚠️ 必须推进一帧：两台显示器的坐标是**在 update() 里算的**
+     *    （game.js:1130-1131），enter() 之后它们还停在 (0,0) ——
+     *    不补这一帧，真值会把显示器画在左上角（实测该块 Δ24.1，
+     *    而且真值全图上桌子上是空的）。
+     *
+     *    用 dt=0：坐标就位，而 t 不变 → bob = sin(0)=0，与静态层严格对齐。
+     *    ⚠️ 别改成 1/60：那样 t=1/60，bob 立刻偏离 0，静态层就对不上了。
+     */
+    animate(scene) {
+      scene.update(0);
+    },
+  },
+
+  s2: {
+    bake: bakeS2,
+    klass: () => S2,
+    prepTruth(scene, last) {
+      // 卡牌旋转锁种子：用烘焙那一批，消除两次 U.rand 的差
+      last.extra.cards.forEach((c, i) => {
+        scene.cards[i].rot = c.rot;
+      });
+    },
+    // 心跳 heartScale 在 beatT=0 时为 1 → 与烘焙定格帧一致，不推进
+    blitExtraAt: 'cards',
+    blitExtra(g, last, ref) {
+      // 同 S0：锚点（心尖中心）不在裁剪后贴图的中心，按归一化位置对齐
+      const spec = last.specs.find((s) => s.name === 'heart');
+      const sink = last.sinks.heart;
+      const u = (last.anchors.heartX - spec.dx) / spec.dw;
+      const v = (last.anchors.heartY - spec.dy) / spec.dh;
+      g.drawImage(
+        sink.canvas,
+        last.anchors.heartX - u * spec.dw,
+        last.anchors.heartY - v * spec.dh,
+        spec.dw,
+        spec.dh,
+      );
+      void ref;
+    },
   },
 };
 
