@@ -20,6 +20,9 @@ import { S0 } from './scenes/s0';
 import { S1 } from './scenes/s1';
 import { S2 } from './scenes/s2';
 import { S3 } from './scenes/s3';
+import { S4 } from './scenes/s4';
+import { S5 } from './scenes/s5';
+import { S6 } from './scenes/s6';
 import { S10 } from './scenes/s10';
 import { LogicPlane } from './input/logicPlane';
 import { FrameStats, MAX_DT, pickTier, TIER_PROFILE, type TierDecision } from './core/loop';
@@ -51,6 +54,12 @@ const SCENE_DEFS: Record<
   s1: { logicLayer: 'screens', create: (st, lg, host, dom) => new S1(st, lg, host, dom) },
   s2: { logicLayer: 'heart', create: (st, lg, host, dom) => new S2(st, lg, host, dom) },
   s3: { logicLayer: 'bubbles', create: (st, lg, host, dom) => new S3(st, lg, host, dom) },
+  // S4 花瓣层 parallax=1（等于镜头参照系）， LogicPlane 用它做参考层时
+  // 位移补偿恒为 0 —— 拖拽对手的是"贴在哪就是哪"的那层，选它最稳。
+  s4: { logicLayer: 'heartOutline', create: (st, lg, host, dom) => new S4(st, lg, host, dom) },
+  // S5 热区是海浪带，参考层取 waves 本身：镜头漂移时热区跟着可见的海面走
+  s5: { logicLayer: 'waves', create: (st, lg, host, dom) => new S5(st, lg, host, dom) },
+  s6: { logicLayer: 'catIdle', create: (st, lg, host, dom) => new S6(st, lg, host, dom) },
   s10: { logicLayer: 'actors', create: (st, lg, host, dom) => new S10(st, lg, host, dom) },
 };
 
@@ -62,8 +71,23 @@ interface ActiveScene {
   enter(): void;
   update(dt: number): void;
   handlePointerDown(clientX: number, clientY: number): boolean;
+  /**
+   * 拖动类交互（S4 拼心 / S6 抚摸 / S7 擦泪 / S9 拖到一起）需要 move / up。
+   * 原版也是同一套：onDown 抓取 → onMove 跟随/累积 → onUp 结算。
+   * ⚠️ 坐标一律是**屏幕 client 像素**，由场景自己 toDesign —— 与 down 一致。
+   */
+  handlePointerMove?(clientX: number, clientY: number): void;
+  handlePointerUp?(clientX: number, clientY: number): void;
   setPointer(nx: number, ny: number): void;
   setCameraEnabled(on: boolean): void;
+  /**
+   * 保真比对前的"静默"钩子（可选）。
+   *
+   * 有些场景会自己生成元素（S4 每帧 6% 概率飘花瓣、S7 的雨滴相位），
+   * 这些随机物不在烘焙真值里，留着比对就是假失败。实现这个方法的场景
+   * 在这里把它们归零/清掉，比对才能反映"与原版是否一致"这一件事。
+   */
+  freezeForFidelity?(): void;
   /** 命中测试（设计坐标 → 槽位）。无定位热点的场景（S10）恒返回 0 */
   hitTest(x: number, y: number): number;
 }
@@ -191,6 +215,8 @@ async function boot(): Promise<void> {
 
   const onMove = (e: PointerEvent): void => {
     scene.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    // 拖动类交互（S4/S6/S7/S9）：原版 onMove 的等价物
+    scene.handlePointerMove?.(e.clientX, e.clientY);
   };
 
   canvas.addEventListener('pointerdown', onDown);
@@ -201,6 +227,12 @@ async function boot(): Promise<void> {
     } catch {
       /* 同上 */
     }
+    // 原版 onUp：结算拖拽（拼心是否放对位置、擦泪是否擦够……）
+    scene.handlePointerUp?.(e.clientX, e.clientY);
+  });
+  // X5 上 pointercancel 比 pointerup 更早、且必然：不接的话拖拽会"卡住"
+  canvas.addEventListener('pointercancel', (e) => {
+    scene.handlePointerUp?.(e.clientX, e.clientY);
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -320,6 +352,9 @@ async function boot(): Promise<void> {
     },
     bubblePositions: () => withBubbles.bubbleDesignPositions?.() ?? [],
     tapAt: (clientX: number, clientY: number) => scene.handlePointerDown(clientX, clientY),
+    /** 拖拽类场景（S4 拼心 / S7 擦泪 / S9 拖到一起）的 move / up 钩子 */
+    moveAt: (clientX: number, clientY: number) => scene.handlePointerMove?.(clientX, clientY),
+    releaseAt: (clientX: number, clientY: number) => scene.handlePointerUp?.(clientX, clientY),
     viewport: () => ({ w: window.innerWidth, h: window.innerHeight, dpr }),
     canvasSize: () => ({ w: canvas.width, h: canvas.height }),
 

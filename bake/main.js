@@ -16,7 +16,29 @@ import { bakeS10 } from './scenes/s10.js';
 import { bakeS0 } from './scenes/s0.js';
 import { bakeS1 } from './scenes/s1.js';
 import { bakeS2 } from './scenes/s2.js';
+import { bakeS4 } from './scenes/s4.js';
+import { bakeS5 } from './scenes/s5.js';
+import { bakeS6 } from './scenes/s6.js';
 import { tightBBox, withSeed, SEED_PAPER, createSink } from './layerSink.js';
+
+/**
+ * 把 runtimePlaced 层的贴图按「锚点对齐」画到合成图上。
+ *
+ * ⚠️ 贴图是**裁剪到紧致包围盒**的，锚点一般不在贴图中心（信封的阴影在
+ *    下方、猫的身体偏下）。所以必须算出锚点在贴图内的归一化位置 (u,v)，
+ *    再按"锚点 → 目标点"对齐。假定居中会让元素整块偏掉（实测 Δ88.8）。
+ *
+ * @param {number} anchor.x 锚点的设计坐标（与烘焙 spec 一致）
+ * @param {number} target.x 希望锚点落到的地方（真值那一帧的实际值）
+ */
+function blitAnchored(g, last, name, anchor, target) {
+  const spec = last.specs.find((s) => s.name === name);
+  const sink = last.sinks[name];
+  const u = (anchor.x - spec.dx) / spec.dw;
+  const v = (anchor.y - spec.dy) / spec.dh;
+  g.drawImage(sink.canvas, target.x - u * spec.dw, target.y - v * spec.dh, spec.dw, spec.dh);
+  return spec;
+}
 
 /**
  * 场景注册表 —— M2 量产每加一场，就往这里加一条。
@@ -89,20 +111,12 @@ const SCENES = {
     },
     blitExtraAt: 'paper',
     blitExtra(g, last, ref) {
-      // ⚠️ 贴图是"裁剪到紧致包围盒"的产物，**锚点不在贴图中心**
-      //    （信封的阴影在下方，包围盒偏下）。所以必须先算出锚点在贴图内的
-      //    归一化位置 (u,v)，再按"锚点对齐到目标点"画 —— 假定居中会让
-      //    信封整块偏掉（实测最差块 Δ88.8）。
-      const spec = last.specs.find((s) => s.name === 'envelope');
-      const sink = last.sinks.envelope;
-      const u = (last.anchors.envX - spec.dx) / spec.dw;
-      const v = (last.anchors.envY - spec.dy) / spec.dh;
-      g.drawImage(
-        sink.canvas,
-        last.anchors.envX - u * spec.dw,
-        ref.envY + ref.float - v * spec.dh,
-        spec.dw,
-        spec.dh,
+      blitAnchored(
+        g,
+        last,
+        'envelope',
+        { x: last.anchors.envX, y: last.anchors.envY },
+        { x: last.anchors.envX, y: ref.envY + ref.float },
       );
     },
   },
@@ -135,20 +149,75 @@ const SCENES = {
     },
     // 心跳 heartScale 在 beatT=0 时为 1 → 与烘焙定格帧一致，不推进
     blitExtraAt: 'cards',
+    blitExtra(g, last) {
+      const a = { x: last.anchors.heartX, y: last.anchors.heartY };
+      blitAnchored(g, last, 'heart', a, a);
+    },
+  },
+
+  s4: {
+    bake: bakeS4,
+    klass: () => S4,
+    /**
+     * update(0)：目标心坐标是在 update 里算的（game.js:1408），只跑 enter
+     * 的话 target 还是 (0,0)。随后**清空花瓣** —— update 里那段
+     * `Math.random() < 0.06` 的生成是随机的，真值有、合成没有，
+     * 会变成假差异。花瓣本身由运行时摆，不参与对拍。
+     */
+    animate(scene) {
+      scene.update(0);
+      scene.petals = [];
+    },
+    blitExtraAt: 'trees',
     blitExtra(g, last, ref) {
-      // 同 S0：锚点（心尖中心）不在裁剪后贴图的中心，按归一化位置对齐
-      const spec = last.specs.find((s) => s.name === 'heart');
-      const sink = last.sinks.heart;
-      const u = (last.anchors.heartX - spec.dx) / spec.dw;
-      const v = (last.anchors.heartY - spec.dy) / spec.dh;
-      g.drawImage(
-        sink.canvas,
-        last.anchors.heartX - u * spec.dw,
-        last.anchors.heartY - v * spec.dh,
-        spec.dw,
-        spec.dh,
-      );
+      // 目标心轮廓：placed=0 < maxPetals 时原版会画（game.js:1434-1439）
       void ref;
+      blitAnchored(
+        g,
+        last,
+        'heartOutline',
+        { x: last.anchors.targetX, y: last.anchors.targetY },
+        { x: last.anchors.targetX, y: last.anchors.targetY },
+      );
+    },
+  },
+
+  s5: {
+    bake: bakeS5,
+    klass: () => S5,
+    // waveT 初值 0 → render 即真值那一帧，无需 animate
+    blitExtraAt: 'ocean',
+    blitExtra(g, last, ref) {
+      // 波浪层（定格 waveT=0）
+      void ref;
+      blitAnchored(
+        g,
+        last,
+        'waves',
+        { x: last.anchors.waveAnchorX ?? 0, y: last.anchors.waveAnchorY ?? 0 },
+        { x: last.anchors.waveAnchorX ?? 0, y: last.anchors.waveAnchorY ?? 0 },
+      );
+    },
+  },
+
+  s6: {
+    bake: bakeS6,
+    klass: () => S6,
+    /** update(0)：catX/catY 在 update 里算（game.js:1562）；不推进 t，眨眼保持不闭 */
+    animate(scene) {
+      scene.update(0);
+    },
+    blitExtraAt: 'furniture',
+    blitExtra(g, last, ref) {
+      // 未抚摸态：原版画 curious（game.js:1588，purr=0）
+      void ref;
+      blitAnchored(
+        g,
+        last,
+        'catIdle',
+        { x: last.anchors.catX, y: last.anchors.catY },
+        { x: last.anchors.catX, y: last.anchors.catY },
+      );
     },
   },
 };

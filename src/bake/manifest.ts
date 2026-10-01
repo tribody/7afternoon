@@ -84,6 +84,18 @@ export const SCENE_RUNTIME: Record<string, SceneRuntimeConfig> = {
     runtimePlaced: ['heart'],
   },
   s3: { order: LAYER_ORDER, runtimePlaced: ['bubbles'] },
+  s4: {
+    order: ['sky', 'glow', 'paper', 'ground', 'trees', 'heartOutline', 'petalPlaced', 'petalFall', 'actors'],
+    runtimePlaced: ['heartOutline', 'petalPlaced', 'petalFall'],
+  },
+  s5: {
+    order: ['sky', 'glow', 'sun', 'ocean', 'waves', 'beach', 'paper', 'palm', 'surfboard', 'actors'],
+    runtimePlaced: ['waves'],
+  },
+  s6: {
+    order: ['sky', 'glow', 'paper', 'ground', 'furniture', 'catIdle', 'catEnjoy', 'actors'],
+    runtimePlaced: ['catIdle', 'catEnjoy'],
+  },
   s10: {
     order: ['sky', 'glow', 'paper', 'ground', 'sun', 'clouds', 'actors'],
     runtimePlaced: [],
@@ -118,6 +130,19 @@ export const LAYER_Z: Record<string, number> = {
   envelopeOpen: -2.1,
   actors: -4,
   bubbles: -2,
+  // ── 批次 B（S4 拼心 / S5 海浪 / S6 养猫）──────────────────
+  trees: -4.7,
+  heartOutline: -2.4,
+  petalPlaced: -2.3,
+  petalFall: -2.2,
+  ocean: -6.2,
+  waves: -6.1,
+  beach: -6.0,
+  palm: -4.8,
+  surfboard: -4.5,
+  furniture: -4.7,
+  catIdle: -2.2,
+  catEnjoy: -2.1,
 };
 
 export function layerOf(m: BakeManifest, name: string): BakedLayer {

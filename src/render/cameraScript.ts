@@ -116,6 +116,95 @@ export const S2_CAMERA: CameraScript = {
   after: 'hold',
 };
 
+/** 批量场景的镜头：幅度都压在 1.5% 画幅内，按情绪选方向 */
+export const S4_CAMERA: CameraScript = {
+  id: 'S4',
+  mood: '春天里轻轻往上抬（花瓣在落，镜头在迎）',
+  keys: [
+    { t: 0, x: 0, y: 0.004 },
+    { t: 14, x: 0.003, y: -0.006 },
+  ],
+  pointerGain: 0.014,
+  after: 'hold',
+};
+
+export const S5_CAMERA: CameraScript = {
+  id: 'S5',
+  mood: '海平线一样的稳（先横向漂一点，再停住）',
+  keys: [
+    { t: 0, x: -0.005, y: 0 },
+    { t: 16, x: 0.005, y: -0.004 },
+  ],
+  pointerGain: 0.014,
+  after: 'hold',
+};
+
+export const S6_CAMERA: CameraScript = {
+  id: 'S6',
+  mood: '居家的随意（几乎不动，只有一点点呼吸）',
+  keys: [
+    { t: 0, x: 0, y: 0 },
+    { t: 18, x: 0.004, y: -0.005 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
+export const S7_CAMERA: CameraScript = {
+  id: 'S7',
+  mood: '雨里的静止（镜头不敢动，只有一点下沉）',
+  keys: [
+    { t: 0, x: 0, y: 0 },
+    { t: 20, x: 0, y: -0.005 },
+  ],
+  pointerGain: 0.01,
+  after: 'hold',
+};
+
+export const S8_CAMERA: CameraScript = {
+  id: 'S8',
+  mood: '补光灯下的轻微仰视（缓缓上抬）',
+  keys: [
+    { t: 0, x: 0, y: -0.003 },
+    { t: 15, x: 0, y: 0.004 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
+export const S9_CAMERA: CameraScript = {
+  id: 'S9',
+  mood: '争吵后的凝滞（只有极轻的横向游移，像不知道该看哪里）',
+  keys: [
+    { t: 0, x: -0.004, y: 0 },
+    { t: 18, x: 0.004, y: -0.003 },
+  ],
+  pointerGain: 0.01,
+  after: 'hold',
+};
+
+export const S11_CAMERA: CameraScript = {
+  id: 'S11',
+  mood: '夜归（镜头从画面左侧缓缓向右，跟着走回家的方向）',
+  keys: [
+    { t: 0, x: -0.006, y: 0 },
+    { t: 20, x: 0.006, y: -0.004 },
+  ],
+  pointerGain: 0.012,
+  after: 'hold',
+};
+
+export const S12_CAMERA: CameraScript = {
+  id: 'S12',
+  mood: '终局（极慢地向上，像把镜头交给星星）',
+  keys: [
+    { t: 0, x: 0, y: 0 },
+    { t: 30, x: 0, y: -0.012 },
+  ],
+  pointerGain: 0.014,
+  after: 'hold',
+};
+
 const easeIO = (v: number) => (v < 0.5 ? 2 * v * v : 1 - Math.pow(-2 * v + 2, 2) / 2);
 
 /** 求某一时刻的镜头偏移（不含指针分量） */

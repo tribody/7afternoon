@@ -105,6 +105,10 @@ export const U = {
   clamp(v: number, mn: number, mx: number): number {
     return Math.max(mn, Math.min(mx, v));
   },
+  /** 原版 game.js:50 —— 环境元素的初值（花瓣/雨滴/粒子生成用） */
+  rand(mn: number, mx: number): number {
+    return Math.random() * (mx - mn) + mn;
+  },
   /** 原版 game.js:57 —— 连线生长等动画用 */
   easeOut(t: number): number {
     return 1 - (1 - t) * (1 - t);

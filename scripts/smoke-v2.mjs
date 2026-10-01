@@ -488,12 +488,28 @@ const CLOSURES = [
     doneWaitMs: 1400,
   },
   {
-    id: 's2',
-    layers: 7,
-    note: '心 50px 内点 3 次换文案，t>1 判 done（game.js:1318-1326）',
-    expectText: '心动，是藏不住的秘密',
-    expectTaps: 3,
-    doneWaitMs: 1400,
+    id: 's4',
+    layers: 9,
+    note: '唯一真正的拖拽场：抓 25px 内花瓣 → 拖到目标心 60px 内吸附 → 放满 5 片（game.js:1462-1480）',
+    expectText: '从今天起，你是我的了',
+    expectTaps: 5,
+    doneWaitMs: 1700,
+  },
+  {
+    id: 's5',
+    layers: 10,
+    note: '海浪带 y∈(0.45h,0.7h) 只判 y，点 5 次换文案，t>1.5 判 done（game.js:1547-1554）',
+    expectText: '和你在一起的每一天都是蜜月',
+    expectTaps: 5,
+    doneWaitMs: 1700,
+  },
+  {
+    id: 's6',
+    layers: 8,
+    note: '按住累积 petProgress（0.5/s → 需 2s），松手时若满 1 才换文案（game.js:1605-1612）',
+    expectText: '小家伙也很喜欢你们的小家',
+    expectTaps: 1,
+    doneWaitMs: 200,
   },
 ];
 
@@ -547,6 +563,8 @@ for (const sc of CLOSURES) {
   await p.evaluate(() => {
     window.__v2.setCameraEnabled(false);
     if (typeof window.__v2.scene?.t === 'number') window.__v2.scene.t = 3;
+    // 自生成元素（S4 花瓣 / 将来 S7 雨滴）不在烘焙真值里，先归零
+    window.__v2.scene?.freezeForFidelity?.();
   });
   await p.waitForTimeout(140);
   const frame = await p.evaluate(() => window.__v2.captureFrame());
@@ -582,10 +600,12 @@ for (const sc of CLOSURES) {
  *    所以按 id 分发 —— 用字符串描述"点哪里、点几次"，保持可读。
  */
 async function runInteract(p, sc) {
-  return p.evaluate((id) => {
+  return p.evaluate(async (id) => {
     const v = window.__v2;
     const { w, h } = v.viewport();
     const s = v.scene;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
     if (id === 's10') {
       for (let i = 0; i < 6; i++) v.tapAt(w * (0.2 + 0.1 * i), h * 0.4);
     } else if (id === 's0') {
@@ -596,6 +616,27 @@ async function runInteract(p, sc) {
     } else if (id === 's2') {
       const pt = s.heartDesignPosition();
       for (let i = 0; i < 3; i++) v.tapAt(pt.x, pt.y);
+    } else if (id === 's4') {
+      // 拖拽四步：生成花瓣 → down 抓住 → move 到目标 → up 落下吸附
+      const t = s.targetDesignPosition();
+      for (let i = 0; i < 5; i++) {
+        const px = w * (0.15 + 0.14 * i);
+        const py = h * 0.75;
+        s.spawnPetalAt(px, py);
+        v.tapAt(px, py);
+        v.moveAt(t.x, t.y);
+        v.releaseAt(t.x, t.y);
+      }
+    } else if (id === 's5') {
+      const band = s.waveBandDesign();
+      const y = (band.y0 + band.y1) / 2;
+      for (let i = 0; i < 5; i++) v.tapAt(w * (0.2 + 0.15 * i), y);
+    } else if (id === 's6') {
+      // 按住累积：petProgress 每秒 +0.5，必须按满 2 秒；松手才换文案
+      const pt = s.catDesignPosition();
+      v.tapAt(pt.x, pt.y);
+      await sleep(2400);
+      v.releaseAt(pt.x, pt.y);
     }
     return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
   }, sc.id);

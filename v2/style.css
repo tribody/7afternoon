@@ -395,6 +395,24 @@ html, body {
     100% { opacity: 0; transform: rotate(var(--a)) translateY(-34px) scaleY(1.1); }
 }
 
+/* 海浪涟漪（S5）：原版爆 splash 粒子，这里用一圈偏冷的水光代替 */
+.splash-ripple {
+    border-color: #8FD3E8;
+    box-shadow: 0 0 12px rgba(143, 211, 232, 0.7);
+}
+
+/* 抚摸进度环（S6）：原版在猫上方 50px 画一段扇形 arc（game.js:1590-1596）。
+   走 DOM SVG 之后每帧只改一个 strokeDashoffset —— 比每帧重绘便宜，
+   而且不进 3D 缩放链路，72px 的圆环在手机上始终是清晰的。 */
+.pet-ring {
+    position: absolute;
+    width: 72px;
+    height: 72px;
+    margin: -36px 0 0 -36px;
+    pointer-events: none;
+    will-change: left, top;
+}
+
 /* ==================== 真机性能浮层（M1 验收用） ==================== */
 /* 打开：URL 加 ?debug=1，或屏幕左上角连点 3 下。
    不加过渡、不引第三方库，它自己不能成为性能噪声源。 */
