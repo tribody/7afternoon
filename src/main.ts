@@ -27,6 +27,8 @@ import { S7 } from './scenes/s7';
 import { S8 } from './scenes/s8';
 import { S9 } from './scenes/s9';
 import { S10 } from './scenes/s10';
+import { S11 } from './scenes/s11';
+import { S12 } from './scenes/s12';
 import { LogicPlane } from './input/logicPlane';
 import { FrameStats, MAX_DT, pickTier, TIER_PROFILE, type TierDecision } from './core/loop';
 import { PerfOverlay } from './ui/perfOverlay';
@@ -69,6 +71,10 @@ const SCENE_DEFS: Record<
   s8: { logicLayer: 'ringLight', create: (st, lg, host, dom) => new S8(st, lg, host, dom) },
   s9: { logicLayer: 'boySad', create: (st, lg, host, dom) => new S9(st, lg, host, dom) },
   s10: { logicLayer: 'actors', create: (st, lg, host, dom) => new S10(st, lg, host, dom) },
+  // S11 的命中对象是 house 上的窗（house parallax=1 → 位移补偿恒为 0）
+  s11: { logicLayer: 'house', create: (st, lg, host, dom) => new S11(st, lg, host, dom) },
+  // S12 无定位热点（任意点按），参考层取 actors（parallax=1）与 S10 同理
+  s12: { logicLayer: 'actors', create: (st, lg, host, dom) => new S12(st, lg, host, dom) },
 };
 
 /** 13 场在主循环里需要的最小公共面（M3 的 SceneManager 将直接复用） */

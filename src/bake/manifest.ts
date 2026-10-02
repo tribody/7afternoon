@@ -112,6 +112,19 @@ export const SCENE_RUNTIME: Record<string, SceneRuntimeConfig> = {
     order: ['sky', 'glow', 'paper', 'ground', 'sun', 'clouds', 'actors'],
     runtimePlaced: [],
   },
+  // S11 是状态切换型：灭态烘足，亮灯增量（亮窗/光晕/光锥/女孩猫/行走男孩）全 runtimePlaced
+  s11: {
+    order: [
+      'sky', 'stars', 'paper', 'ground', 'house', 'windowLit', 'windowGlow',
+      'door', 'lightCone', 'friends', 'boySad', 'boyHappy',
+    ],
+    runtimePlaced: ['windowLit', 'windowGlow', 'lightCone', 'friends', 'boySad', 'boyHappy'],
+  },
+  // S12 终局：heart（大心脉冲）是唯一 runtimePlaced，ended 前不存在
+  s12: {
+    order: ['sky', 'glow', 'stars', 'paper', 'moon', 'actors', 'heart'],
+    runtimePlaced: ['heart'],
+  },
 };
 
 /** 按场景 id（不区分大小写）取运行时配置，未知场景回落 S3 的表并给出可定位的报错 */
@@ -166,6 +179,15 @@ export const LAYER_Z: Record<string, number> = {
   girlSad: -2.2,
   boyHappy: -2.2,
   girlHappy: -2.2,
+  // ── 批次 D（S11 点灯 / S12 终局）──────────────────────────
+  // S11 的 boySad/boyHappy 与 S9 同名，共用上面的 -2.2
+  house: -4.7,
+  windowLit: -2.3,
+  windowGlow: -2.28,
+  door: -2.26,
+  lightCone: -2.24,
+  friends: -2.3,
+  moon: -6.0,
 };
 
 export function layerOf(m: BakeManifest, name: string): BakedLayer {

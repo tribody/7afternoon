@@ -535,6 +535,23 @@ const CLOSURES = [
     expectTaps: 1,
     doneWaitMs: 2300,
   },
+  {
+    id: 's11',
+    layers: 12,
+    note: '窗 (hx, hy+30) 40px 内点一次点灯：窗体跳变、wash/光锥渐变、女孩猫出现、男孩走向门口，lightT>2 判 done（game.js:1887-1894）',
+    expectText: '加班到很晚回家，你和仙姑都在等我',
+    expectTaps: 1,
+    doneWaitMs: 2200,
+  },
+  {
+    id: 's12',
+    layers: 7,
+    note: '任意点按计数（无 hit test），满 8 次 ended：换文案 + 大心出现并以 sin(t*3) 脉冲（game.js:1933-1939）',
+    expectText: '七夕快乐，未来的每一天都在一起',
+    expectTaps: 8,
+    // ⚠️ 原版 S12 永不 done（终局定格在心脉冲画面，game.js 无 done=true 路径）
+    expectDone: false,
+  },
 ];
 
 for (const sc of CLOSURES) {
@@ -610,9 +627,15 @@ for (const sc of CLOSURES) {
   check(`${sc.id}: 完成文案与原版一致`, after.text === sc.expectText, `"${after.text}"`);
   check(`${sc.id}: 提示文案已清空`, after.hint === '', `"${after.hint}"`);
 
-  await p.waitForTimeout(sc.doneWaitMs);
-  const done = await p.evaluate(() => window.__v2.scene.done);
-  check(`${sc.id}: 完成条件满足后场景判定 done`, done === true, `等待 ${sc.doneWaitMs}ms`);
+  if (sc.expectDone === false) {
+    // 终局定格场（S12）：没有 done 可等，改为断言"ended 后大心已出现"
+    const heart = await p.evaluate(() => window.__v2.scene.heartVisible?.() ?? null);
+    check(`${sc.id}: ended 后大心已出现（终局定格，永不 done）`, heart === true, String(heart));
+  } else {
+    await p.waitForTimeout(sc.doneWaitMs);
+    const done = await p.evaluate(() => window.__v2.scene.done);
+    check(`${sc.id}: 完成条件满足后场景判定 done`, done === true, `等待 ${sc.doneWaitMs}ms`);
+  }
 
   await p.close();
 }
@@ -676,6 +699,15 @@ async function runInteract(p, sc) {
       v.tapAt(a.boyX, a.y);
       v.moveAt(a.girlX - 70, a.y);
       v.releaseAt(a.girlX - 70, a.y);
+    } else if (id === 's11') {
+      // 点灯：窗心 40px 内点一次（game.js:1889），done 在 lightT>2 后
+      const pt = s.windowDesignPosition();
+      v.tapAt(pt.x, pt.y);
+    } else if (id === 's12') {
+      // 许愿：任意点 8 次（无 hit test）。ended 在下一帧 update 里判定，
+      // 点完等一拍再返回，否则读到的 text 还是空串（game.js:1904 在 update 里）
+      for (let i = 0; i < 8; i++) v.tapAt(w * (0.2 + 0.08 * i), h * 0.3);
+      await sleep(150);
     }
     return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
   }, sc.id);

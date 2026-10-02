@@ -22,6 +22,8 @@ import { bakeS6 } from './scenes/s6.js';
 import { bakeS7 } from './scenes/s7.js';
 import { bakeS8 } from './scenes/s8.js';
 import { bakeS9 } from './scenes/s9.js';
+import { bakeS11 } from './scenes/s11.js';
+import { bakeS12 } from './scenes/s12.js';
 import { tightBBox, withSeed, SEED_PAPER, createSink } from './layerSink.js';
 
 /**
@@ -288,6 +290,34 @@ const SCENES = {
       const girlAnchor = { x: last.anchors.girlX, y: last.anchors.actY };
       blitAnchored(g, last, 'girlSad', girlAnchor, girlAnchor);
     },
+  },
+
+  s11: {
+    bake: bakeS11,
+    klass: () => S11,
+    // 星星锁种子：50 颗逐颗随机，两次随机的分布不同 = 结构性差异
+    prepTruth(scene, last) {
+      scene.stars = last.extra.stars;
+    },
+    // 真值定格在灯灭态（lightsOn=false）：可见的 runtimePlaced 层只有
+    // boySad（sad 态定格在 0.1w 起点）。亮灯增量（亮窗/wash/光锥/女孩猫/
+    // happy 男孩）在灭态真值里都不存在，不贴。
+    blitExtraAt: 'boyHappy',
+    blitExtra(g, last) {
+      const a = { x: last.anchors.boyX0, y: last.anchors.boyY };
+      blitAnchored(g, last, 'boySad', a, a);
+    },
+  },
+
+  s12: {
+    bake: bakeS12,
+    klass: () => S12,
+    // 星星锁种子：80 颗逐颗随机
+    prepTruth(scene, last) {
+      scene.stars = last.extra.stars;
+    },
+    // 真值那一帧 taps=0 → 未 ended → 大心不存在；月亮/角色都是普通层。
+    // 与 s8 同理：没有任何"真值里有但没烘"的元素要补。
   },
 };
 

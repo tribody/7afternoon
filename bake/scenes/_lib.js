@@ -16,6 +16,12 @@
  *   A. 调用原版函数永远喂**设计坐标**（375×812），放大交给 sink 的 scale
  *   B. 出血不要用放大画布解决 —— 按设计尺寸烘，3D 侧放大 quad + ClampToEdge
  *   C. 不要手推图层矩形 —— 「大画布画 → 量紧致包围盒 → 裁剪」自标定
+ *   D. box 层的 draw 一律用**全画布设计坐标**（模块常量），绝不用
+ *      `w/2`/`h/2` 之类的"贴图内坐标"：L.draw 收到的 (w,h) 是整幅
+ *      375×812，而 sink 的 transform 已把 box 原点平移掉 —— 把贴图内
+ *      坐标当设计坐标画，内容会整体飘到画布外（s11 光锥实测全透明）。
+ *      `w/2, h/2` 只在 box 恰好以画布中心对称时碰巧正确（s12 heart），
+ *      碰巧正确比报错更危险。
  */
 import { createSink, sinkFromCanvas, tightBBox } from '../layerSink.js';
 
