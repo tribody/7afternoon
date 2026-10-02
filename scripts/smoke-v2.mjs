@@ -511,6 +511,30 @@ const CLOSURES = [
     expectTaps: 1,
     doneWaitMs: 200,
   },
+  {
+    id: 's7',
+    layers: 8,
+    note: '按住 + 在脸 50px 内移动累积 tearWipe（0.03/次 → 约 34 次），擦满松手换文案（game.js:1673-1685）',
+    expectText: '别哭，有我在',
+    expectTaps: 1,
+    doneWaitMs: 1700,
+  },
+  {
+    id: 's8',
+    layers: 8,
+    note: '补光灯 45px 内点 4 次，每次触发全屏闪光，t>1.5 判 done（game.js:1725-1733）',
+    expectText: '你认真的样子，真的很美',
+    expectTaps: 4,
+    doneWaitMs: 1700,
+  },
+  {
+    id: 's9',
+    layers: 8,
+    note: '抓住男孩（40px）拖近女孩（间距 ≥60），|boyX-girlX|<90 判和好，merged 后 t>2 判 done（game.js:1774-1794）',
+    expectText: '和好如初，再也不放手',
+    expectTaps: 1,
+    doneWaitMs: 2300,
+  },
 ];
 
 for (const sc of CLOSURES) {
@@ -637,6 +661,21 @@ async function runInteract(p, sc) {
       v.tapAt(pt.x, pt.y);
       await sleep(2400);
       v.releaseAt(pt.x, pt.y);
+    } else if (id === 's7') {
+      // 擦泪：按住 + 在 50px 内来回移动 40 次（0.03/次 → 1.2 ≥ 1），松手换文案
+      const pt = s.faceDesignPosition();
+      v.tapAt(pt.x, pt.y);
+      for (let i = 0; i < 40; i++) v.moveAt(pt.x + Math.sin(i * 0.9) * 20, pt.y + Math.cos(i * 1.3) * 15);
+      v.releaseAt(pt.x, pt.y);
+    } else if (id === 's8') {
+      const pt = s.ringDesignPosition();
+      for (let i = 0; i < 4; i++) v.tapAt(pt.x, pt.y);
+    } else if (id === 's9') {
+      // 拖到一起：抓住男孩，拖到 girlX-70（间距 70 < 90 → 和好），松手
+      const a = s.actorDesignPositions();
+      v.tapAt(a.boyX, a.y);
+      v.moveAt(a.girlX - 70, a.y);
+      v.releaseAt(a.girlX - 70, a.y);
     }
     return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
   }, sc.id);

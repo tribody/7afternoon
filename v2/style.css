@@ -401,6 +401,28 @@ html, body {
     box-shadow: 0 0 12px rgba(143, 211, 232, 0.7);
 }
 
+/* 擦拭进度环（S7）：与 S6 的抚摸环同一套做法（DOM SVG + dashoffset），
+   位置定位共用 .pet-ring 的规则 */
+.wipe-ring {
+    position: absolute;
+    width: 72px;
+    height: 72px;
+    margin: -36px 0 0 -36px;
+    pointer-events: none;
+    will-change: left, top;
+}
+
+/* 距离虚线（S9）：原版 canvas setLineDash 横跨两人。烘成贴图就得 scaleX，
+   会把虚线段本身拉变形 —— DOM 的 border dashed 是矢量的，宽度跟拖动走。 */
+.gap-line {
+    position: absolute;
+    height: 0;
+    border-top: 2px dashed rgba(160, 160, 170, 0.15);
+    transform: translateY(-1px);
+    pointer-events: none;
+    will-change: left, width;
+}
+
 /* 抚摸进度环（S6）：原版在猫上方 50px 画一段扇形 arc（game.js:1590-1596）。
    走 DOM SVG 之后每帧只改一个 strokeDashoffset —— 比每帧重绘便宜，
    而且不进 3D 缩放链路，72px 的圆环在手机上始终是清晰的。 */

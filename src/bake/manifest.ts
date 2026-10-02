@@ -96,6 +96,18 @@ export const SCENE_RUNTIME: Record<string, SceneRuntimeConfig> = {
     order: ['sky', 'glow', 'paper', 'ground', 'furniture', 'catIdle', 'catEnjoy', 'actors'],
     runtimePlaced: ['catIdle', 'catEnjoy'],
   },
+  s7: {
+    order: ['sky', 'glow', 'paper', 'rain', 'ground', 'umbrella', 'actors', 'tear'],
+    runtimePlaced: ['rain', 'tear'],
+  },
+  s8: {
+    order: ['sky', 'glow', 'paper', 'ground', 'ringLight', 'camera', 'flash', 'actors'],
+    runtimePlaced: ['flash'],
+  },
+  s9: {
+    order: ['sky', 'glow', 'paper', 'ground', 'boySad', 'girlSad', 'boyHappy', 'girlHappy'],
+    runtimePlaced: ['boySad', 'girlSad', 'boyHappy', 'girlHappy'],
+  },
   s10: {
     order: ['sky', 'glow', 'paper', 'ground', 'sun', 'clouds', 'actors'],
     runtimePlaced: [],
@@ -143,6 +155,17 @@ export const LAYER_Z: Record<string, number> = {
   furniture: -4.7,
   catIdle: -2.2,
   catEnjoy: -2.1,
+  // ── 批次 C（S7 擦泪 / S8 补光灯 / S9 和好）────────────────
+  rain: -6.4,
+  umbrella: -4.6,
+  tear: -2.0,
+  ringLight: -4.3,
+  camera: -4.2,
+  flash: -2.05,
+  boySad: -2.2,
+  girlSad: -2.2,
+  boyHappy: -2.2,
+  girlHappy: -2.2,
 };
 
 export function layerOf(m: BakeManifest, name: string): BakedLayer {

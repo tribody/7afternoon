@@ -23,6 +23,9 @@ import { S3 } from './scenes/s3';
 import { S4 } from './scenes/s4';
 import { S5 } from './scenes/s5';
 import { S6 } from './scenes/s6';
+import { S7 } from './scenes/s7';
+import { S8 } from './scenes/s8';
+import { S9 } from './scenes/s9';
 import { S10 } from './scenes/s10';
 import { LogicPlane } from './input/logicPlane';
 import { FrameStats, MAX_DT, pickTier, TIER_PROFILE, type TierDecision } from './core/loop';
@@ -60,6 +63,11 @@ const SCENE_DEFS: Record<
   // S5 热区是海浪带，参考层取 waves 本身：镜头漂移时热区跟着可见的海面走
   s5: { logicLayer: 'waves', create: (st, lg, host, dom) => new S5(st, lg, host, dom) },
   s6: { logicLayer: 'catIdle', create: (st, lg, host, dom) => new S6(st, lg, host, dom) },
+  // S7 热区是女孩的脸（tear 层 parallax=1 → 位移补偿恒为 0）
+  s7: { logicLayer: 'tear', create: (st, lg, host, dom) => new S7(st, lg, host, dom) },
+  // S8 的命中对象是补光灯本体（非焦点层），镜头漂移时热区跟着灯走
+  s8: { logicLayer: 'ringLight', create: (st, lg, host, dom) => new S8(st, lg, host, dom) },
+  s9: { logicLayer: 'boySad', create: (st, lg, host, dom) => new S9(st, lg, host, dom) },
   s10: { logicLayer: 'actors', create: (st, lg, host, dom) => new S10(st, lg, host, dom) },
 };
 

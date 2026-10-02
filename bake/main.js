@@ -19,6 +19,9 @@ import { bakeS2 } from './scenes/s2.js';
 import { bakeS4 } from './scenes/s4.js';
 import { bakeS5 } from './scenes/s5.js';
 import { bakeS6 } from './scenes/s6.js';
+import { bakeS7 } from './scenes/s7.js';
+import { bakeS8 } from './scenes/s8.js';
+import { bakeS9 } from './scenes/s9.js';
 import { tightBBox, withSeed, SEED_PAPER, createSink } from './layerSink.js';
 
 /**
@@ -48,8 +51,8 @@ function blitAnchored(g, last, name, anchor, target) {
  *   prepTruth    真值准备（喂同一批随机数据，锁两次随机的差异）
  *   animate      推进若干帧让运行时元素就位（S3 的气泡要收敛）
  *   refState     记录真值那一帧的实际状态，合成图按它摆放
- *   blitExtraAt  在某层**之后**插入额外绘制（绘制序敏感）
- *   blitExtra    额外绘制本体
+ *   blitExtraAt  在某层**之后**插入额外绘制（绘制序敏感）。字符串或字符串数组
+ *   blitExtra    额外绘制本体，末位参数是本次触发的层名（数组时可据此分支）
  */
 const SCENES = {
   s3: {
@@ -218,6 +221,72 @@ const SCENES = {
         { x: last.anchors.catX, y: last.anchors.catY },
         { x: last.anchors.catX, y: last.anchors.catY },
       );
+    },
+  },
+
+  s7: {
+    bake: bakeS7,
+    klass: () => S7,
+    /** 雨滴锁种子：80 条逐条随机，两次随机出来的分布不同 = 结构性差异 */
+    prepTruth(scene, last) {
+      scene.drops = last.extra.drops;
+    },
+    // 泪珠位置恒定（t=0 → tearY=h*0.5，wobble=0），不需要 animate
+    /** 两处插入点：雨要夹在 paper 与 ground 之间，泪珠要压在 actors 之后 */
+    blitExtraAt: ['paper', 'actors'],
+    blitExtra(g, last, ref, w, at) {
+      void ref;
+      void w;
+      if (at === 'paper') {
+        // 雨幕：满幅层，U.T=0 → 与烘焙完全一致，锚点 (0,0) 即自身原点
+        blitAnchored(g, last, 'rain', { x: 0, y: 0 }, { x: 0, y: 0 });
+        return;
+      }
+      // 泪珠 3 颗：tearWipe=0 → 3 - floor(0*3) = 3 颗全部在场（game.js:1654）
+      for (let i = 0; i < 3; i++) {
+        blitAnchored(
+          g,
+          last,
+          'tear',
+          { x: last.anchors.tear0X, y: last.anchors.tear0Y },
+          { x: last.anchors.tear0X + i * 10, y: last.anchors.tear0Y + i * 5 },
+        );
+      }
+    },
+  },
+
+  s8: {
+    bake: bakeS8,
+    klass: () => S8,
+    // flashT 初值 0 → 真值那一帧没有白幕，也没有遗漏的元素要补
+  },
+
+  s9: {
+    bake: bakeS9,
+    klass: () => S9,
+    /** update(0)：boyX/girlX/targetX 全在 update 里算（game.js:1742-1743） */
+    animate(scene) {
+      scene.update(0);
+    },
+    blitExtraAt: 'ground',
+    blitExtra(g, last, ref) {
+      void ref;
+      // 距离虚线（game.js:1757-1763）—— 未和好时才画
+      g.save();
+      g.strokeStyle = C.rgba(C.gray, 0.15);
+      g.lineWidth = 2;
+      g.setLineDash([5, 5]);
+      g.beginPath();
+      const lineY = last.design.h * 0.55;
+      g.moveTo(last.anchors.boyX, lineY);
+      g.lineTo(last.anchors.girlX, lineY);
+      g.stroke();
+      g.restore();
+      // 未和好 → 两人都画 sad 态
+      const boyAnchor = { x: last.anchors.boyX, y: last.anchors.actY };
+      blitAnchored(g, last, 'boySad', boyAnchor, boyAnchor);
+      const girlAnchor = { x: last.anchors.girlX, y: last.anchors.actY };
+      blitAnchored(g, last, 'girlSad', girlAnchor, girlAnchor);
     },
   },
 };
@@ -454,10 +523,19 @@ window.__bake = {
         g.restore();
       };
 
+      // 插入点可以是单个层名，也可以是层名数组（S7 需要在 paper 之后下雨、
+      // 在 actors 之后落泪 —— 两处都要按原版的绘制序）
+      const extraAt =
+        hook.blitExtraAt == null
+          ? []
+          : Array.isArray(hook.blitExtraAt)
+            ? hook.blitExtraAt
+            : [hook.blitExtraAt];
+
       for (const spec of last.specs) {
         // runtimePlaced 层是"按运行时坐标摆放的素材"，由 blitExtra 画，跳过整层
         if (!spec.runtimePlaced) blit(spec.name);
-        if (hook.blitExtraAt === spec.name) hook.blitExtra?.(g, last, refState, w);
+        if (extraAt.includes(spec.name)) hook.blitExtra?.(g, last, refState, w, spec.name);
       }
     }
 

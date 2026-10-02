@@ -160,7 +160,7 @@ console.log(`✓ 引导完成：绘制函数 ${Object.keys(boot.probe).length} �
 
 // ── 烘焙 ────────────────────────────────────────────────
 // M2 量产节奏：每做完一场，往这里加一个 id（对应 bake/main.js 的 SCENES 注册表）
-const SCENES = ['s3', 's10', 's0', 's1', 's2', 's4', 's5', 's6'];
+const SCENES = ['s3', 's10', 's0', 's1', 's2', 's4', 's5', 's6', 's7', 's8', 's9'];
 
 await mkdir(outDir, { recursive: true });
 
