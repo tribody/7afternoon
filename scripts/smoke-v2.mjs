@@ -819,6 +819,78 @@ console.log('\n════════ 帧统计（headless 软件光栅，仅�
 console.log(`帧数 ${perf.frames}  平均 ${perf.avgFps?.toFixed(1)} fps  p95 ${perf.p95Ms?.toFixed(1)}ms  档位 ${perf.tier}`);
 console.log(`档位依据：${perf.tierReason}`);
 
+// ── 5.5 UI 控件：看得见，并且真的有反应 ──────────────────────
+// 「DOM 里有」和「点得动」是两回事 —— 2026-10-03 独立验收抓到
+// 音乐按钮可见可点却零事件绑定、进度点容器永远空白。
+// 这里对每个控件都走「存在 → 可见（含祖先链）→ 操作 → 状态真的变了」。
+// ⚠️ 祖先链检查不能省：元素自身的 computed display 不会因为祖先 none 而变成 none，
+//    只查元素自己会得出「可见」的错误结论（本次 UI 层缺失就是这么漏掉的）。
+console.log('\n════════ UI 控件（可见性与响应）════════');
+{
+  const p3 = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await p3.goto(`${base}/v2/?scene=s3`, { waitUntil: 'load' });
+  await p3.waitForFunction(() => window.__v2?.scene, null, { timeout: 20000 });
+  // 加载屏淡出 0.8s 后 UI 层才点亮 —— 等它自动亮，不靠点击兜底
+  const autoLit = await p3
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('#ui-overlay');
+        return !!el && getComputedStyle(el).display !== 'none';
+      },
+      null,
+      { timeout: 8000 },
+    )
+    .then(() => true)
+    .catch(() => false);
+  check('UI 层在加载结束后自动点亮（无需用户先点一下）', autoLit === true);
+
+  const ui = await p3.evaluate(() => {
+    const probe = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return { found: false, visible: false, blockedBy: null, size: [0, 0] };
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      let blockedBy = null;
+      let n = el;
+      while (n && !blockedBy) {
+        const c = getComputedStyle(n);
+        if (c.display === 'none' || c.visibility === 'hidden') blockedBy = n.id || n.className || n.tagName;
+        n = n.parentElement;
+      }
+      return {
+        found: true,
+        visible: !blockedBy && Number(cs.opacity) > 0.5 && r.width > 0 && r.height > 0,
+        blockedBy,
+        size: [Math.round(r.width), Math.round(r.height)],
+      };
+    };
+    return { overlay: probe('#ui-overlay'), music: probe('#music-btn'), dots: probe('#progress-dots') };
+  });
+  check('UI 层根节点可见且祖先链无阻挡', ui.overlay.visible === true, `blockedBy=${ui.overlay.blockedBy}`);
+  check('音乐按钮可见（未被祖先 display:none 吞掉）', ui.music.found && ui.music.visible, JSON.stringify(ui.music));
+  // ⚠️ 只断言"容器存在"：里面的点还没生成。进度点的语义是"当前在第几场"，
+  //    而单场试跑模式（?scene=sN）没有"当前索引"这个概念 —— 生成逻辑
+  //    必须与 M3 的 SceneManager 一起做，否则只会得到 13 个恒暗的点。
+  check('进度点容器存在（点待 M3 流转落地后生成）', ui.dots.found === true, JSON.stringify(ui.dots));
+
+  // 音乐：首次手势里起 AudioContext → 按钮点一下进静音态
+  await p3.click('#game-canvas', { position: { x: 60, y: 760 } });
+  await p3.waitForTimeout(180);
+  const started = await p3.evaluate(() => ({ started: window.__v2.music?.started === true }));
+  check('首次用户手势后音频上下文已创建（自动播放策略）', started.started === true, JSON.stringify(started));
+
+  await p3.click('#music-btn');
+  await p3.waitForTimeout(150);
+  const muted = await p3.evaluate(() => ({
+    cls: document.querySelector('#music-btn')?.classList.contains('muted') ?? null,
+    inst: window.__v2.music?.isMuted ?? null,
+  }));
+  check('音乐按钮点击后按钮进入静音样式', muted.cls === true, JSON.stringify(muted));
+  check('音乐按钮的静音态真的作用到音频模块', muted.inst === true, JSON.stringify(muted));
+
+  await p3.close();
+}
+
 // ── 6. 部署形态（转发页 + 原版冻结副本）──────────────────────
 // 这三样和 v2 一起上线，坏了照样是白屏。尤其转发页：它是唯一的入口，
 // 一行 TARGET 写错就是线上 404。

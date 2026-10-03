@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { Stage } from './render/stage';
 import { loadScene, type LoadedScene } from './bake/loader';
 import { LoadingScreen } from './ui/loading';
+import { Music } from './ui/music';
 import { S0 } from './scenes/s0';
 import { S1 } from './scenes/s1';
 import { S2 } from './scenes/s2';
@@ -135,6 +136,21 @@ async function boot(): Promise<void> {
   const uiOverlay = must<HTMLElement>('#ui-overlay');
 
   const loading = new LoadingScreen(loadingEl, fillEl);
+  const music = new Music();
+
+  // ── 音乐开关 ──────────────────────────────────────────────
+  // 照抄原版 setupUI（classic/game.js:2149-2155）：
+  //   pointerdown → stopPropagation（别让这张点透到 canvas 变成场景交互）
+  //   + preventDefault + toggleMute + 切 .muted 样式。
+  // ⚠️ 这里必须 preventDefault：音乐按钮叠在 canvas 之上，不拦的话
+  //    点按钮会同时触发场景里的点按判定（原版同一处也这么写）。
+  const musicBtn = document.querySelector<HTMLElement>('#music-btn');
+  musicBtn?.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const muted = music.toggleMute();
+    musicBtn.classList.toggle('muted', muted);
+  });
 
   // ── 分辨率：按档位夹住 DPR ─────────────────────────────────
   // 原版 classic/game.js:2036 的 DPR **无上限**，DPR3 的手机白烧 2.25×
@@ -236,6 +252,9 @@ async function boot(): Promise<void> {
       started = true;
       uiOverlay.style.display = '';
     }
+    // 原版 game.js:2126：首次用户手势里起播（浏览器自动播放策略要求）。
+    // play() 幂等，之后每次点按调都无害。
+    music.play();
     scene.handlePointerDown(e.clientX, e.clientY);
   };
 
@@ -329,6 +348,7 @@ async function boot(): Promise<void> {
 
     try {
       scene.update(dt);
+      music.update(dt);
       stage.render();
     } catch (err) {
       cancelAnimationFrame(rafId);
@@ -382,6 +402,7 @@ async function boot(): Promise<void> {
     logic,
     stats,
     overlay,
+    music,
     loading: done,
     manifest: loaded.manifest,
     interactiveMs,
