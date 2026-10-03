@@ -17,6 +17,15 @@
   <canvas id="game-canvas"></canvas>
 
   <!--
+    场景过场遮罩（M3 SceneManager 用）。
+    原版是在 canvas 上盖一层黑色矩形（game.js:2217-2220），v2 换成 DOM 层：
+    零 GPU 成本，且 z-index 8 正好夹在 bubble-layer(5) 与 ui-overlay(10) 之间
+    —— 也就是「盖住画面内容（含 DOM 气泡），不盖 UI（文案/提示/进度点/音乐按钮）」，
+    与原版的层次语义完全一致。
+  -->
+  <div id="scene-fade" class="scene-fade"></div>
+
+  <!--
     气泡文字层：**刻意不进 3D**。
     14px 的中文烘进贴图在 3D 缩放后会糊，且 tapped 状态要改颜色；
     走 DOM 叠层字最清楚、改色零成本，位置由逻辑平面从归一化坐标投影得到。

@@ -39,6 +39,25 @@ html, body {
     touch-action: none;
 }
 
+/* ==================== Scene Fade ==================== */
+/*
+ * 换场遮罩。由 SceneManager 每帧写 opacity（fadeAlpha）。
+ *
+ * ⚠️ z-index 8 是算过的：bubble-layer 是 5、ui-overlay 是 10 ——
+ *    夹在中间才能「盖住画面（含 DOM 气泡层）但不盖 UI」。
+ *    原版的黑色矩形盖在 ctx 上、DOM UI 另行处理，层次语义要一一对上。
+ * ⚠️ pointer-events: none 必须写：过场那 1.2 秒里它是块全屏黑幕，
+ *    不穿透的话整个页面点不动，下一幕的开场会被自己的遮罩吞掉第一次点击。
+ */
+.scene-fade {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 8;
+}
+
 /* ==================== Loading Screen ==================== */
 .loading-screen {
     position: fixed;

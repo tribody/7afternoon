@@ -14,7 +14,6 @@
  */
 import * as THREE from 'three';
 import { Stage } from './render/stage';
-import { loadScene, type LoadedScene } from './bake/loader';
 import { LoadingScreen } from './ui/loading';
 import { Music } from './ui/music';
 import { S0 } from './scenes/s0';
@@ -30,16 +29,29 @@ import { S9 } from './scenes/s9';
 import { S10 } from './scenes/s10';
 import { S11 } from './scenes/s11';
 import { S12 } from './scenes/s12';
-import { LogicPlane } from './input/logicPlane';
 import { FrameStats, MAX_DT, pickTier, TIER_PROFILE, type TierDecision } from './core/loop';
+import { SceneManager, type ActiveScene, type SceneDef } from './core/sceneManager';
 import { PerfOverlay } from './ui/perfOverlay';
 import { PALETTE, runColorCheck } from './dev/colorCheck';
 
 const params = new URLSearchParams(location.search);
 const mode = params.get('check');
 
-/** 本阶段装配哪个场景（M3 接 SceneManager 后由流转状态机接管） */
-const sceneId = params.get('scene') ?? 's3';
+/**
+ * ── M3 起 sceneId 的语义 ─────────────────────────────────────
+ *
+ * 不带 `?scene=`：**线性连播**，从 s0 一路走到 s12（终局定格）。
+ * 带 `?scene=sN`：**单场试跑**，完成不流转 —— 这是开发/验收用的口子，
+ * 冒烟的 13 场逐场闭环就走这条路（否则没法单独取证某一场）。
+ */
+const startScene = params.get('scene');
+const linearMode = startScene === null;
+
+/**
+ * 13 场的播放顺序 —— 就是故事顺序。
+ * 原版 game.js:2003-2008 是 new S0..new S12 的数组，这里与之逐一对应。
+ */
+const SCENE_ORDER = ['s0', 's1', 's2', 's3', 's4', 's5', 's6', 's7', 's8', 's9', 's10', 's11', 's12'];
 
 /**
  * 场景注册表：M2 的"配置 → 贴图 → 能跑"闭环入口。
@@ -49,13 +61,7 @@ const sceneId = params.get('scene') ?? 's3';
  *   选最靠前的 actors（parallax=0.8）让手指与画面的偏差最小。
  * · create —— 构造对应的运行时场景实例。
  */
-const SCENE_DEFS: Record<
-  string,
-  {
-    logicLayer: string;
-    create(stage: Stage, logic: LogicPlane, host: { onText(t: string): void; onHint(h: string): void; onDone(): void }, domLayer: HTMLElement): ActiveScene;
-  }
-> = {
+const SCENE_DEFS: Record<string, SceneDef> = {
   s0: { logicLayer: 'envelope', create: (st, lg, host, dom) => new S0(st, lg, host, dom) },
   s1: { logicLayer: 'screens', create: (st, lg, host, dom) => new S1(st, lg, host, dom) },
   s2: { logicLayer: 'heart', create: (st, lg, host, dom) => new S2(st, lg, host, dom) },
@@ -77,35 +83,6 @@ const SCENE_DEFS: Record<
   // S12 无定位热点（任意点按），参考层取 actors（parallax=1）与 S10 同理
   s12: { logicLayer: 'actors', create: (st, lg, host, dom) => new S12(st, lg, host, dom) },
 };
-
-/** 13 场在主循环里需要的最小公共面（M3 的 SceneManager 将直接复用） */
-interface ActiveScene {
-  readonly text: string;
-  readonly hint: string;
-  readonly done: boolean;
-  enter(): void;
-  update(dt: number): void;
-  handlePointerDown(clientX: number, clientY: number): boolean;
-  /**
-   * 拖动类交互（S4 拼心 / S6 抚摸 / S7 擦泪 / S9 拖到一起）需要 move / up。
-   * 原版也是同一套：onDown 抓取 → onMove 跟随/累积 → onUp 结算。
-   * ⚠️ 坐标一律是**屏幕 client 像素**，由场景自己 toDesign —— 与 down 一致。
-   */
-  handlePointerMove?(clientX: number, clientY: number): void;
-  handlePointerUp?(clientX: number, clientY: number): void;
-  setPointer(nx: number, ny: number): void;
-  setCameraEnabled(on: boolean): void;
-  /**
-   * 保真比对前的"静默"钩子（可选）。
-   *
-   * 有些场景会自己生成元素（S4 每帧 6% 概率飘花瓣、S7 的雨滴相位），
-   * 这些随机物不在烘焙真值里，留着比对就是假失败。实现这个方法的场景
-   * 在这里把它们归零/清掉，比对才能反映"与原版是否一致"这一件事。
-   */
-  freezeForFidelity?(): void;
-  /** 命中测试（设计坐标 → 槽位）。无定位热点的场景（S10）恒返回 0 */
-  hitTest(x: number, y: number): number;
-}
 
 function must<T extends Element>(sel: string): T {
   const el = document.querySelector<T>(sel);
@@ -167,34 +144,17 @@ async function boot(): Promise<void> {
   overlay.set('dpr', dpr.toFixed(2));
   overlay.set('design', '375×812 @2x');
 
-  let loaded: LoadedScene;
-  try {
-    loaded = await loadScene(new THREE.TextureLoader(), sceneId, (n, total) =>
-      loading.setProgress(0.15 + (n / total) * 0.7),
-    );
-    loading.setProgress(0.9);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    await loading.fallback(`素材加载失败：${msg}`);
-    showFault(`素材加载失败：${msg}`);
-    return;
-  }
-
-  stage.mount(loaded);
-  overlay.set('vram', `${stage.estimateTextureMB().toFixed(1)}MB`);
-  overlay.set('scene', sceneId);
-
-  // ── 逻辑平面与场景 ────────────────────────────────────────
-  const sceneDef = SCENE_DEFS[sceneId];
-  if (!sceneDef) {
-    const msg = `未知场景「${sceneId}」（可用：${Object.keys(SCENE_DEFS).join(', ')}）`;
-    await loading.fallback(msg);
-    showFault(msg);
-    return;
-  }
-
-  const logic = new LogicPlane(stage, sceneDef.logicLayer);
-  const scene: ActiveScene = sceneDef.create(stage, logic, {
+  // ── SceneManager（M3）：13 场线性推进 ─────────────────────
+  // 流转状态机、目标管理、贴图滚动预取与回收全在里面，本文件只做接线。
+  const sm = new SceneManager({
+    stage,
+    defs: SCENE_DEFS,
+    order: SCENE_ORDER,
+    domLayer: bubbleLayer,
+    fadeEl: document.querySelector<HTMLElement>('#scene-fade'),
+    dotsEl: document.querySelector<HTMLElement>('#progress-dots'),
+    loader: new THREE.TextureLoader(),
+    linear: linearMode,
     /**
      * ⚠️ 必须加/删 `.show` class —— CSS 里 `.scene-text` 默认 `opacity:0`，
      * 只有挂上 `.show` 才显示。只写 textContent 的话，13 场的叙事文字
@@ -214,17 +174,29 @@ async function boot(): Promise<void> {
       hintEl.textContent = h;
       hintEl.style.opacity = h ? '' : '0';
     },
-    onDone: () => {
-      /* M2 仍不做场景流转（单场试跑）。M3 接 SceneManager。 */
+    // 每装配一幕就刷一次浮层：vram 是**当前场**的占用，换场后必须重算
+    onSceneMounted: (id) => {
+      overlay.set('scene', id);
+      overlay.set('vram', `${stage.estimateTextureMB().toFixed(1)}MB`);
     },
-  }, bubbleLayer);
+  });
+
+  try {
+    await sm.start(startScene ?? 's0', (n, total) => loading.setProgress(0.15 + (n / total) * 0.7));
+    loading.setProgress(0.9);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    await loading.fallback(`素材加载失败：${msg}`);
+    showFault(`素材加载失败：${msg}`);
+    return;
+  }
 
   // ── 尺寸 ──────────────────────────────────────────────────
   const applySize = (): void => {
     const w = window.innerWidth;
     const h = window.innerHeight;
     stage.setSize(w, h, dpr);
-    logic.setViewport(w, h);
+    sm.applyViewport(w, h);
   };
   applySize();
 
@@ -255,13 +227,13 @@ async function boot(): Promise<void> {
     // 原版 game.js:2126：首次用户手势里起播（浏览器自动播放策略要求）。
     // play() 幂等，之后每次点按调都无害。
     music.play();
-    scene.handlePointerDown(e.clientX, e.clientY);
+    sm.handlePointerDown(e.clientX, e.clientY);
   };
 
   const onMove = (e: PointerEvent): void => {
-    scene.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    sm.setPointer(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
     // 拖动类交互（S4/S6/S7/S9）：原版 onMove 的等价物
-    scene.handlePointerMove?.(e.clientX, e.clientY);
+    sm.handlePointerMove(e.clientX, e.clientY);
   };
 
   canvas.addEventListener('pointerdown', onDown);
@@ -273,11 +245,11 @@ async function boot(): Promise<void> {
       /* 同上 */
     }
     // 原版 onUp：结算拖拽（拼心是否放对位置、擦泪是否擦够……）
-    scene.handlePointerUp?.(e.clientX, e.clientY);
+    sm.handlePointerUp(e.clientX, e.clientY);
   });
   // X5 上 pointercancel 比 pointerup 更早、且必然：不接的话拖拽会"卡住"
   canvas.addEventListener('pointercancel', (e) => {
-    scene.handlePointerUp?.(e.clientX, e.clientY);
+    sm.handlePointerUp(e.clientX, e.clientY);
   });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -294,7 +266,7 @@ async function boot(): Promise<void> {
   });
   canvas.addEventListener('webglcontextrestored', () => {
     // 上下文恢复后 GPU 侧资源全部失效，重新上传贴图最稳妥
-    for (const [, entry] of loaded.layers) entry.texture.needsUpdate = true;
+    sm.markTexturesDirty();
     hideFault();
   });
 
@@ -347,7 +319,7 @@ async function boot(): Promise<void> {
     }
 
     try {
-      scene.update(dt);
+      sm.update(dt);
       music.update(dt);
       stage.render();
     } catch (err) {
@@ -369,7 +341,6 @@ async function boot(): Promise<void> {
   };
 
   const readyStart = performance.now();
-  scene.enter();
   rafId = requestAnimationFrame(loop);
 
   const done = await loading.complete();
@@ -392,37 +363,72 @@ async function boot(): Promise<void> {
   }, 800);
 
   // ── 测试 / 自省钩子 ───────────────────────────────────────
-  // `scene` 是当前装配的场景实例（?scene= 选择，默认 s3）。
+  // `scene` 是当前装配的场景实例；不带 ?scene= 时从 s0 起线性连播。
   // bubblePositions 仅 S3 有（S10 无定位热点，返回空数组）。
-  const withBubbles = scene as ActiveScene & { bubbleDesignPositions?: () => Array<{ slot: number; x: number; y: number; tapped: boolean }> };
+  //
+  // ⚠️ scene / sceneId / logic / manifest 一律写成 **getter**：
+  //    M3 之后换场会**替换掉**这些对象，写成快照的话测试钩子会永远指着
+  //    已经退场的第一幕 —— 症状是"点了没反应"但画面明明在动，极难察觉。
   (window as unknown as Record<string, unknown>).__v2 = {
     stage,
-    scene,
-    sceneId,
-    logic,
+    get scene() {
+      return sm.scene;
+    },
+    get sceneId() {
+      return sm.sceneId;
+    },
+    get logic() {
+      return sm.logicPlane;
+    },
+    get manifest() {
+      return sm.manifest;
+    },
+    /** 流转状态：playing / fadeOut / waiting / fadeIn */
+    get flowState() {
+      return sm.flowState;
+    },
+    get sceneIndex() {
+      return sm.sceneIndex;
+    },
+    sceneOrder: SCENE_ORDER,
+    /** 是否为线性连播（false = ?scene=sN 单场试跑） */
+    linear: linearMode,
+    manager: sm,
     stats,
     overlay,
     music,
     loading: done,
-    manifest: loaded.manifest,
     interactiveMs,
     /** 命中回归：屏幕坐标 → 设计坐标 → 原版判定 */
-    designAt: (x: number, y: number) => logic.toDesign(x, y),
-    hitTestAt: (clientX: number, clientY: number) => {
-      const d = logic.toDesign(clientX, clientY);
-      return { design: d, slot: d.ok ? scene.hitTest(d.x, d.y) : -1 };
+    designAt: (x: number, y: number) => {
+      const lg = sm.logicPlane;
+      return lg ? lg.toDesign(x, y) : { ok: false, x: 0, y: 0 };
     },
-    bubblePositions: () => withBubbles.bubbleDesignPositions?.() ?? [],
-    tapAt: (clientX: number, clientY: number) => scene.handlePointerDown(clientX, clientY),
+    hitTestAt: (clientX: number, clientY: number) => {
+      const lg = sm.logicPlane;
+      if (!lg) return { design: { ok: false, x: 0, y: 0 }, slot: -1 };
+      const d = lg.toDesign(clientX, clientY);
+      return { design: d, slot: d.ok ? (sm.scene?.hitTest(d.x, d.y) ?? -1) : -1 };
+    },
+    bubblePositions: () =>
+      (sm.scene as (ActiveScene & { bubbleDesignPositions?: () => Array<{ slot: number; x: number; y: number; tapped: boolean }> }) | null)?.bubbleDesignPositions?.() ??
+      [],
+    tapAt: (clientX: number, clientY: number) => sm.handlePointerDown(clientX, clientY),
     /** 拖拽类场景（S4 拼心 / S7 擦泪 / S9 拖到一起）的 move / up 钩子 */
-    moveAt: (clientX: number, clientY: number) => scene.handlePointerMove?.(clientX, clientY),
-    releaseAt: (clientX: number, clientY: number) => scene.handlePointerUp?.(clientX, clientY),
+    moveAt: (clientX: number, clientY: number) => {
+      sm.handlePointerMove(clientX, clientY);
+    },
+    releaseAt: (clientX: number, clientY: number) => {
+      sm.handlePointerUp(clientX, clientY);
+    },
     viewport: () => ({ w: window.innerWidth, h: window.innerHeight, dpr }),
     canvasSize: () => ({ w: canvas.width, h: canvas.height }),
 
     /** 保真排查：整层显隐（消融实验）与镜头冻结 */
     setLayerVisible: (name: string, on: boolean) => stage.setLayerVisible(name, on),
-    setCameraEnabled: (on: boolean) => scene.setCameraEnabled(on),
+    setCameraEnabled: (on: boolean) => {
+      sm.scene?.setCameraEnabled(on);
+    },
     layerNames: () => stage.layerNames(),
 
     /**

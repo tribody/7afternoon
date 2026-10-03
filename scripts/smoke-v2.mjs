@@ -32,6 +32,7 @@ import { readFile, stat, writeFile, mkdir } from 'node:fs/promises';
 import { join, extname, normalize, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { playScene } from './scene-interact.js';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const dist = join(root, 'dist');
@@ -91,7 +92,10 @@ page.on('console', (m) => {
 });
 
 // ── 1. 起得来 ───────────────────────────────────────────────
-await page.goto(`${base}/v2/`, { waitUntil: 'load', timeout: 30000 });
+// ⚠️ 必须显式带 ?scene=s3：M3 起**不带参数默认是 s0 线性连播**，
+//    而下面第 1、2 段测的是 S3 的清单完整性与命中迁移 —— 不写死的话，
+//    默认入口一变，这两段就会悄悄改测别的场景（2026-10-04 实测踩到）。
+await page.goto(`${base}/v2/?scene=s3`, { waitUntil: 'load', timeout: 30000 });
 
 let booted = true;
 try {
@@ -740,76 +744,13 @@ for (const sc of CLOSURES) {
 }
 
 /**
- * 在页面里执行该场的交互脚本。
+ * 把某一幕玩通。
  *
- * ⚠️ Playwright 的 page.evaluate 不能直接传函数体（会被序列化掉闭包），
- *    所以按 id 分发 —— 用字符串描述"点哪里、点几次"，保持可读。
+ * 13 幕的玩法统一放在 `scripts/scene-interact.js`，连播取证脚本
+ * （shot-flow.mjs）也用同一份 —— 只存在一处就不会腐化。
  */
 async function runInteract(p, sc) {
-  return p.evaluate(async (id) => {
-    const v = window.__v2;
-    const { w, h } = v.viewport();
-    const s = v.scene;
-    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-    if (id === 's10') {
-      for (let i = 0; i < 6; i++) v.tapAt(w * (0.2 + 0.1 * i), h * 0.4);
-    } else if (id === 's0') {
-      const pt = s.envelopeDesignPosition();
-      v.tapAt(pt.x, pt.y);
-    } else if (id === 's1') {
-      for (const pt of s.screenDesignPositions()) v.tapAt(pt.x, pt.y);
-    } else if (id === 's2') {
-      const pt = s.heartDesignPosition();
-      for (let i = 0; i < 3; i++) v.tapAt(pt.x, pt.y);
-    } else if (id === 's4') {
-      // 拖拽四步：生成花瓣 → down 抓住 → move 到目标 → up 落下吸附
-      const t = s.targetDesignPosition();
-      for (let i = 0; i < 5; i++) {
-        const px = w * (0.15 + 0.14 * i);
-        const py = h * 0.75;
-        s.spawnPetalAt(px, py);
-        v.tapAt(px, py);
-        v.moveAt(t.x, t.y);
-        v.releaseAt(t.x, t.y);
-      }
-    } else if (id === 's5') {
-      const band = s.waveBandDesign();
-      const y = (band.y0 + band.y1) / 2;
-      for (let i = 0; i < 5; i++) v.tapAt(w * (0.2 + 0.15 * i), y);
-    } else if (id === 's6') {
-      // 按住累积：petProgress 每秒 +0.5，必须按满 2 秒；松手才换文案
-      const pt = s.catDesignPosition();
-      v.tapAt(pt.x, pt.y);
-      await sleep(2400);
-      v.releaseAt(pt.x, pt.y);
-    } else if (id === 's7') {
-      // 擦泪：按住 + 在 50px 内来回移动 40 次（0.03/次 → 1.2 ≥ 1），松手换文案
-      const pt = s.faceDesignPosition();
-      v.tapAt(pt.x, pt.y);
-      for (let i = 0; i < 40; i++) v.moveAt(pt.x + Math.sin(i * 0.9) * 20, pt.y + Math.cos(i * 1.3) * 15);
-      v.releaseAt(pt.x, pt.y);
-    } else if (id === 's8') {
-      const pt = s.ringDesignPosition();
-      for (let i = 0; i < 4; i++) v.tapAt(pt.x, pt.y);
-    } else if (id === 's9') {
-      // 拖到一起：抓住男孩，拖到 girlX-70（间距 70 < 90 → 和好），松手
-      const a = s.actorDesignPositions();
-      v.tapAt(a.boyX, a.y);
-      v.moveAt(a.girlX - 70, a.y);
-      v.releaseAt(a.girlX - 70, a.y);
-    } else if (id === 's11') {
-      // 点灯：窗心 40px 内点一次（game.js:1889），done 在 lightT>2 后
-      const pt = s.windowDesignPosition();
-      v.tapAt(pt.x, pt.y);
-    } else if (id === 's12') {
-      // 许愿：任意点 8 次（无 hit test）。ended 在下一帧 update 里判定，
-      // 点完等一拍再返回，否则读到的 text 还是空串（game.js:1904 在 update 里）
-      for (let i = 0; i < 8; i++) v.tapAt(w * (0.2 + 0.08 * i), h * 0.3);
-      await sleep(150);
-    }
-    return { taps: s.tapCount, text: s.text, hint: s.hint, done: s.done };
-  }, sc.id);
+  return p.evaluate(playScene, sc.id);
 }
 
 // ── 5. 帧统计（仅报告：headless 是软件光栅，不代表真机）──────
@@ -889,6 +830,152 @@ console.log('\n════════ UI 控件（可见性与响应）══�
   check('音乐按钮的静音态真的作用到音频模块', muted.inst === true, JSON.stringify(muted));
 
   await p3.close();
+}
+
+// ── 5.7 M3 场景流转：不看状态机，看能否真的从头玩到尾 ────────
+// 这一段存在的理由：之前每一步单测都绿，但整个故事根本走不动 ——
+// 13 场是孤岛，完成一幕不会进下一幕。**部件全绿 ≠ 成品可用**。
+// 所以这里从头到尾真玩一遍，并且额外守两个容易被"状态机空转"骗过去的点：
+//   a) 过场遮罩是不是真的黑过（只看 sceneIndex 变化证明不了）
+//   b) GPU 贴图数有没有随换场单调累积（Stage.clear() 不 dispose 贴图）
+console.log('\n════════ M3 场景流转（13 幕连播）════════');
+{
+  const p4 = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  const flowErrs = [];
+  p4.on('pageerror', (e) => flowErrs.push(String(e)));
+  p4.on('console', (m) => {
+    if (m.type() === 'error') flowErrs.push(m.text());
+  });
+
+  // 不带 ?scene= → 线性连播
+  await p4.goto(`${base}/v2/`, { waitUntil: 'load' });
+  await p4.waitForFunction(() => window.__v2?.scene, null, { timeout: 20000 });
+
+  const order = await p4.evaluate(() => window.__v2.sceneOrder);
+  const entry = await p4.evaluate(() => ({
+    id: window.__v2.sceneId,
+    idx: window.__v2.sceneIndex,
+    linear: window.__v2.linear,
+    hint: document.querySelector('#hint-text')?.textContent ?? '',
+    dots: [...document.querySelectorAll('#progress-dots .progress-dot')].map((d) =>
+      d.className.replace('progress-dot', '').trim(),
+    ),
+  }));
+  check('默认入口从第一幕开始', entry.id === order[0] && entry.idx === 0, `实得 ${entry.id}@${entry.idx}`);
+  check('默认入口是线性连播模式', entry.linear === true, String(entry.linear));
+  // 首幕的入场文案按原版就是**空的**（game.js:1053 `this.text = ''`），
+  // 全靠 hint 引导 —— 所以 hint 一旦也没了，用户进来面对一片星空不知道干嘛。
+  check(
+    '首幕有操作提示引导（入场文案为空时它是唯一引导）',
+    entry.hint.trim().length > 0,
+    `"${entry.hint}"`,
+  );
+  check(
+    '开局进度点 13 个且首个为 active',
+    entry.dots.length === 13 && entry.dots[0] === 'active',
+    `共 ${entry.dots.length} 个，首个=${entry.dots[0]}`,
+  );
+
+  // 每帧采样过场遮罩透明度 —— 证明"黑过"，而不是状态机自己在空转
+  await p4.evaluate(() => {
+    window.__fadeMax = 0;
+    const el = document.querySelector('#scene-fade');
+    const tick = () => {
+      if (el) window.__fadeMax = Math.max(window.__fadeMax, Number(getComputedStyle(el).opacity));
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  const visited = [];
+  const texTrace = [];
+  for (let guard = 0; guard < 16; guard++) {
+    // ⚠️ 必须等进入稳定播放态再动手。换场刚落地时是 fadeIn，
+    //    SceneManager 按原版语义（game.js:2118 判的 state==='playing'）
+    //    **只在 playing 态接受点按** —— 在过场里点会被吞掉，
+    //    于是这一幕永远完不成，看起来像"流转坏了"。产品行为是对的，
+    //    错的是测试没等就开始点（2026-10-04 第一次跑绿 2 红 6 的根因）。
+    await p4.waitForFunction(() => window.__v2.flowState === 'playing', null, { timeout: 15000 });
+
+    const cur = await p4.evaluate(() => ({
+      id: window.__v2.sceneId,
+      idx: window.__v2.sceneIndex,
+      state: window.__v2.flowState,
+      tex: window.__v2.renderInfo().textures,
+    }));
+    visited.push(cur.id);
+    texTrace.push(cur.tex);
+    if (cur.idx >= order.length - 1) break;
+
+    // 各幕都有入场动画，最慢的是 S3：4 句气泡按 0.8s 间隔出现，
+    // **t > 2.4s 才齐** —— 不齐就点不完，看着像"这一幕玩不通"。
+    // 统一等 2.8s，正好也模拟真人读台词的那几秒。
+    await p4.waitForTimeout(2800);
+
+    // 用同一份交互脚本把这一幕玩通（与各幕的独立闭环保持一致）
+    await runInteract(p4, { id: cur.id });
+
+    const doneOk = await p4
+      .waitForFunction(() => window.__v2.scene?.done === true, null, { timeout: 10000 })
+      .then(() => true)
+      .catch(() => false);
+    check(`第 ${cur.idx + 1} 幕 ${cur.id} 完成条件达成`, doneOk === true, `state=${cur.state}`);
+
+    // 完成后：等 2.0s → fadeOut 0.6s → 装配下一幕 → fadeIn
+    const moved = await p4
+      .waitForFunction((prev) => window.__v2.sceneIndex > prev, cur.idx, { timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    check(`第 ${cur.idx + 1} 幕完成后自动流转到下一幕`, moved === true, `目标 ${order[cur.idx + 1]}`);
+    if (!moved) break;
+  }
+
+  check('13 幕全部走到且顺序正确', visited.join(',') === order.join(','), visited.join(','));
+
+  const fin = await p4.evaluate(() => ({
+    id: window.__v2.sceneId,
+    idx: window.__v2.sceneIndex,
+    state: window.__v2.flowState,
+    done: window.__v2.scene?.done,
+    dots: [...document.querySelectorAll('#progress-dots .progress-dot')].map((d) =>
+      d.className.replace('progress-dot', '').trim(),
+    ),
+    fadeMax: window.__fadeMax,
+  }));
+  check('终局停在最后一幕', fin.id === order[order.length - 1] && fin.idx === order.length - 1, fin.id);
+  check(
+    '终局永不定格为 done（照抄原版：故事停在大心脉冲上）',
+    fin.done === false,
+    `done=${fin.done}`,
+  );
+  check('终局回到 playing，不卡在过场中间', fin.state === 'playing', fin.state);
+  check(
+    '终局进度点：前 12 个 done、末个 active',
+    fin.dots.length === 13 && fin.dots.slice(0, 12).every((c) => c === 'done') && fin.dots[12] === 'active',
+    fin.dots.join('|'),
+  );
+  check('过场遮罩真的黑过（非状态机空转）', fin.fadeMax >= 0.9, `峰值 ${Number(fin.fadeMax).toFixed(2)}`);
+
+  // 终幕自身也要能玩通：点满 8 次 → 大心出现 + 结语
+  await runInteract(p4, { id: fin.id });
+  await p4.waitForTimeout(700);
+  const ending = await p4.evaluate(() => ({
+    text: window.__v2.scene?.text,
+    heart: window.__v2.scene?.heartVisible?.(),
+  }));
+  check('终幕点满 8 次出大心', ending.heart === true, `text="${ending.text}"`);
+
+  // 显存：Stage.clear() 不 dispose 贴图，回收由 SceneManager 负责
+  const texPeak = Math.max(...texTrace);
+  const texTail = texTrace.slice(-4).join(',');
+  check(
+    'GPU 贴图数有界（换场有释放，不单调累积）',
+    texPeak <= 40,
+    `峰值 ${texPeak}，末 4 幕 ${texTail}`,
+  );
+
+  check('连播全程无 pageerror / console error', flowErrs.length === 0, flowErrs.slice(0, 2).join(' | '));
+  await p4.close();
 }
 
 // ── 6. 部署形态（转发页 + 原版冻结副本）──────────────────────
