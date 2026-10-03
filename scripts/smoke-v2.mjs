@@ -472,6 +472,14 @@ const CLOSURES = [
     doneWaitMs: 1700,
   },
   {
+    id: 's2',
+    layers: 7,
+    note: '连点心跳 3 次（50px 圆形判定，game.js 同 S3 的 U.dist<50），连点后 t>1 判 done',
+    expectText: '心动，是藏不住的秘密',
+    expectTaps: 3,
+    doneWaitMs: 1600,
+  },
+  {
     id: 's0',
     layers: 6,
     note: '信封中心 60px 内命中一次，拆封后 t>1.5 判 done（game.js:1105-1114）',
@@ -534,6 +542,8 @@ const CLOSURES = [
     expectText: '和好如初，再也不放手',
     expectTaps: 1,
     doneWaitMs: 2300,
+    // 距离虚线走 DOM（非贴图）：s9.ts:14 有理由说明，合并后会 display:none
+    expectDom: '.gap-line',
   },
   {
     id: 's11',
@@ -620,6 +630,33 @@ for (const sc of CLOSURES) {
     `全部块 ${fid.meanAll}  最差 Δ${fid.worstOutside.d}@(${fid.worstOutside.bx},${fid.worstOutside.by})`,
   );
 
+  // ── DOM 叠层自证（交互前：部分元素完成后会被隐藏）────────
+  // 有些元素是**刻意**走 DOM 而非贴图的 —— S9 的距离虚线若烘成贴图，
+  // 间距变化时 scaleX 会把虚线段本身拉伸变形（见 s9.ts 文件头注释）。
+  // canvas 帧读回里看不到 DOM 叠层，必须单独断言，否则会被误判成"这层缺失"
+  // （2026-10-03 独立验收代理就据此报了 S9 虚线缺失，实为 canvas/DOM 取样口径差异）。
+  if (sc.expectDom) {
+    const dom = await p.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return { found: false };
+      const cs = getComputedStyle(el);
+      const r = el.getBoundingClientRect();
+      return {
+        found: true,
+        display: cs.display,
+        borderTop: cs.borderTopStyle,
+        opacity: Number(cs.opacity),
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+      };
+    }, sc.expectDom);
+    check(
+      `${sc.id}: DOM 叠层 ${sc.expectDom} 存在且可见`,
+      dom.found === true && dom.display !== 'none' && dom.opacity > 0 && dom.w > 0,
+      JSON.stringify(dom),
+    );
+  }
+
   // 交互：按各场的原版判定点完
   const after = await runInteract(p, sc);
 
@@ -636,6 +673,68 @@ for (const sc of CLOSURES) {
     const done = await p.evaluate(() => window.__v2.scene.done);
     check(`${sc.id}: 完成条件满足后场景判定 done`, done === true, `等待 ${sc.doneWaitMs}ms`);
   }
+
+  // ── 用户可见性闸门 ────────────────────────────────────────
+  // ⚠️ 这一组断言的不是 JS 属性，而是「用户真的能看见」。
+  //    2026-10-03 的教训：main.ts 的 onText 漏加 `.show` class →
+  //    CSS 里 .scene-text 默认 opacity:0 → 13 场叙事文字一个字都看不到，
+  //    而当时 148 项冒烟全绿 —— 因为它断言的是 scene.text 这个属性值。
+  //    **属性值对了 ≠ 画面上有**。必须查 computed style + 几何包围盒。
+  //    文案是这故事的全部情感载体，这条比任何渲染指标都重要。
+  // 原版 setSceneText 的节奏是「淡出 → 400ms 换字 → 淡入」，而 .scene-text
+  // 的 transition 是 0.8s —— 固定 sleep 会卡在淡入中途读到 opacity=0.8 这种
+  // 中间值（s6 就踩了）。改成轮询等稳定，既准确又不白等。
+  await p.waitForTimeout(450); // 先让 400ms 的换字时机过去
+  await p
+    .waitForFunction(
+      () => {
+        const el = document.querySelector('.scene-text');
+        if (!el) return false;
+        return el.classList.contains('show') && Number(getComputedStyle(el).opacity) > 0.99;
+      },
+      null,
+      { timeout: 3000 },
+    )
+    .catch(() => {
+      /* 等不到就让下面的断言如实报错，这里不吞失败 */
+    });
+  const vis = await p.evaluate(() => {
+    const el = document.querySelector('.scene-text');
+    if (!el) return { found: false };
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    return {
+      found: true,
+      text: el.textContent ?? '',
+      opacity: Number(cs.opacity),
+      visibility: cs.visibility,
+      display: cs.display,
+      rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) },
+      within:
+        r.width > 0 &&
+        r.height > 0 &&
+        r.left >= 0 &&
+        r.top >= 0 &&
+        r.right <= vw &&
+        r.bottom <= vh,
+    };
+  });
+  check(`${sc.id}: 剧情文案 DOM 存在`, vis.found === true);
+  // 判据用 ≥0.99 而不是 ===1：CSS transition 的终值是渐近逼近的，
+  // 卡等到绝对 1 会随机 flaky；0.99 的视觉差异人眼无法分辨，够了。
+  check(
+    `${sc.id}: 剧情文案真实可见（不是 opacity:0）`,
+    vis.opacity >= 0.99 && vis.visibility === 'visible' && vis.display !== 'none',
+    `opacity=${vis.opacity} visibility=${vis.visibility} display=${vis.display}`,
+  );
+  check(`${sc.id}: 剧情文案非空`, (vis.text ?? '').trim().length > 0, `"${vis.text}"`);
+  check(
+    `${sc.id}: 剧情文案完整落在视口内`,
+    vis.within === true,
+    `rect=${JSON.stringify(vis.rect)}`,
+  );
 
   await p.close();
 }

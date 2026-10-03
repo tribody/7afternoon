@@ -179,8 +179,20 @@ async function boot(): Promise<void> {
 
   const logic = new LogicPlane(stage, sceneDef.logicLayer);
   const scene: ActiveScene = sceneDef.create(stage, logic, {
+    /**
+     * ⚠️ 必须加/删 `.show` class —— CSS 里 `.scene-text` 默认 `opacity:0`，
+     * 只有挂上 `.show` 才显示。只写 textContent 的话，13 场的叙事文字
+     * 一个字都看不见（2026-10-03 独立验收抓到：computed opacity 恒为 0）。
+     *
+     * 节奏照抄原版 setSceneText（game.js:2172-2178）：先淡出 → 400ms 后换字再淡入。
+     * 换场时文字是淡退后浮出来的，不是硬切。
+     */
     onText: (t) => {
-      textEl.textContent = t;
+      textEl.classList.remove('show');
+      window.setTimeout(() => {
+        textEl.textContent = t || '';
+        if (t) textEl.classList.add('show');
+      }, 400);
     },
     onHint: (h) => {
       hintEl.textContent = h;
@@ -343,6 +355,21 @@ async function boot(): Promise<void> {
   const done = await loading.complete();
   const interactiveMs = performance.now() - readyStart;
   overlay.set('boot', `${interactiveMs.toFixed(0)}ms`);
+
+  // ── 点亮 UI 层 ────────────────────────────────────────────
+  // 照抄原版 hideLoading（game.js:2077-2083）：加载屏 add hidden →
+  // 等 0.8s 淡出走完（CSS .loading-screen 的 transition 就是 0.8s）→
+  // loading display:none + overlay display:block。
+  //
+  // ⚠️ 这一步漏不得：#ui-overlay 在 index.html 里默认 display:none，
+  //    不点亮的话剧情文案 / 提示 / 进度点 / 音乐按钮**一个都看不见**。
+  //    这是 2026-10-03 独立验收抓到的阻断级问题的**总根因** ——
+  //    当时 148 项冒烟全绿却没发现，因为断言的是 JS 属性值，不是用户能不能看见。
+  // ⚠️ 也不能提前点亮：文案会浮在还没淡出的加载屏上。
+  window.setTimeout(() => {
+    loadingEl.style.display = 'none';
+    uiOverlay.style.display = 'block';
+  }, 800);
 
   // ── 测试 / 自省钩子 ───────────────────────────────────────
   // `scene` 是当前装配的场景实例（?scene= 选择，默认 s3）。
